@@ -1,0 +1,24 @@
+# Weekly update PRs for the GitHub Actions and npm packages used here.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      dev-tools:
+        dependency-type: "development"
+        patterns: ["*"]
+      runtime:
+        dependency-type: "production"
+        patterns: ["*"]

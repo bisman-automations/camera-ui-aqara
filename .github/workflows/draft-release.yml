@@ -1,0 +1,154 @@
+# Drafts a GitHub release on every push to main.
+#
+# The release process
+# -------------------
+# 1. In the release commit ("Release X.Y.Z"), bump "version" in package.json
+#    and write the notes under a new "## [X.Y.Z] - YYYY-MM-DD" heading in
+#    CHANGELOG.md. There is no [Unreleased] section.
+# 2. Push to main.
+# 3. This workflow creates or refreshes a DRAFT release vX.Y.Z whose notes are
+#    that version's CHANGELOG section followed by a "Full Changelog" compare
+#    link. Nothing else: no commit list and no hidden marker. The camera.ui
+#    bundle (bundle.zip) is attached.
+# 4. Donavan reviews the draft and publishes it. Publishing creates the tag
+#    and runs the Publish workflow, which publishes the package to npm.
+#    Nothing here publishes a release or pushes a tag.
+#
+# When package.json's version is already released (a push without a bump),
+# the draft is for the next patch version and says its CHANGELOG section is
+# missing until the release commit adds it.
+name: Draft release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: draft-release-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+      BOT: "github-actions[bot]"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Work out the version to draft
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}"
+          notes_section="$version"
+          gh api --paginate "repos/${REPO}/releases?per_page=100" | jq -s 'add // []' > releases.json
+          if jq -e --arg t "$tag" 'any(.[]; .tag_name == $t and (.draft | not))' releases.json >/dev/null; then
+            IFS=. read -r major minor patch <<<"${version%%[-+]*}"
+            next="${major}.${minor}.$((patch + 1))"
+            tag="v${next}"
+            notes_section="$next"
+            echo "::notice::${version} is already released, so this drafts ${tag}. Add '## [${next}] - YYYY-MM-DD' and bump package.json in the release commit."
+          fi
+          prerelease=false
+          if [[ "${tag#v}" == *-* ]]; then prerelease=true; fi
+          {
+            echo "tag=${tag}"
+            echo "notes_section=${notes_section}"
+            echo "prerelease=${prerelease}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write the release notes
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          NOTES_SECTION: ${{ steps.version.outputs.notes_section }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          wanted = os.environ["NOTES_SECTION"]
+          heading = re.compile(r"^## \[(?P<name>[^\]]+)\]")
+          link_ref = re.compile(r"^\[[^\]]+\]:\s*\S+")
+          out, found = [], False
+          for line in open("CHANGELOG.md", encoding="utf-8").read().splitlines():
+              match = heading.match(line)
+              if match:
+                  if found:
+                      break
+                  found = match.group("name") == wanted
+                  continue
+              if found and not link_ref.match(line):
+                  out.append(line)
+          text = "\n".join(out).strip()
+          if not found or not text:
+              print(f"::warning::CHANGELOG.md has no entries under [{wanted}]; the draft says so. Add them before publishing.")
+              text = f"_No CHANGELOG.md entries under [{wanted}] yet._"
+          open("notes.md", "w", encoding="utf-8").write(text + "\n")
+          PY
+          previous=$(jq -r '[.[] | select((.draft | not) and (.prerelease | not))][0].tag_name // empty' releases.json)
+          {
+            cat notes.md
+            if [ -n "$previous" ] && git rev-parse -q --verify "refs/tags/${previous}" >/dev/null; then
+              printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' "$REPO" "$previous" "$TAG"
+            fi
+          } > body.md
+          cat body.md
+
+      - name: Build the camera.ui bundle
+        run: |
+          npm ci
+          npm run build
+          npx cui bundle
+
+      - name: Create or update the draft
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          body=$(cat body.md)
+          draft_id=$(jq -r --arg t "$TAG" --arg bot "$BOT" '[ .[] | select(.draft and (.tag_name == $t or (.name == $t and .author.login == $bot))) ][0].id // empty' releases.json)
+          if [ -n "$draft_id" ]; then
+            gh api -X PATCH "repos/${REPO}/releases/${draft_id}" \
+              -f tag_name="$TAG" -f name="$TAG" -f target_commitish="$SHA" -f body="$body" \
+              -F draft=true -F prerelease="$PRERELEASE" >/dev/null
+            echo "Updated draft ${TAG}"
+          else
+            draft_id=$(gh api -X POST "repos/${REPO}/releases" \
+              -f tag_name="$TAG" -f name="$TAG" -f target_commitish="$SHA" -f body="$body" \
+              -F draft=true -F prerelease="$PRERELEASE" -q .id)
+            echo "Created draft ${TAG}"
+          fi
+
+          gh api "repos/${REPO}/releases/${draft_id}" > draft.json
+          asset_id=$(jq -r '[.assets[] | select(.name == "bundle.zip")][0].id // empty' draft.json)
+          if [ -n "$asset_id" ]; then gh api -X DELETE "repos/${REPO}/releases/assets/${asset_id}"; fi
+          upload_url=$(jq -r '.upload_url | sub("\\{\\?name,label\\}$"; "")' draft.json)
+          gh api -X POST "${upload_url}?name=bundle.zip" -H "Content-Type: application/zip" --input bundle/bundle.zip >/dev/null
+
+          # Remove drafts this workflow made earlier for another version. Hand-made drafts stay.
+          jq -r --arg t "$TAG" --arg bot "$BOT" --argjson keep "$draft_id" \
+            '.[] | select(.draft and .id != $keep and .tag_name != $t and .author.login == $bot) | .id' releases.json |
+            while read -r id; do gh api -X DELETE "repos/${REPO}/releases/${id}"; done
+
+          {
+            echo "### Draft ${TAG}"
+            echo
+            echo "Review and publish it at https://github.com/${REPO}/releases. Publishing creates the tag and publishes to npm."
+            echo
+            cat body.md
+          } >> "$GITHUB_STEP_SUMMARY"

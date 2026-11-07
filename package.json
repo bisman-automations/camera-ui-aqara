@@ -1,0 +1,64 @@
+{
+  "displayName": "Aqara",
+  "name": "camera-ui-aqara",
+  "version": "1.0.0",
+  "description": "Adds Aqara cameras and doorbells to camera.ui over the local network: discovery, live streams on all three channels and two-way audio through Aqara's LAN talk protocol.",
+  "author": "Donavan Becker (https://github.com/bisman-automations/camera-ui-aqara)",
+  "type": "module",
+  "main": "./bundle/dist/index.js",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "bundle": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build && cui bundle",
+    "bundle:dev": "npm run build && cross-env MODE=development cui bundle",
+    "format": "prettier --write \"src/\" \"test/\" \"*.ts\" --ignore-unknown --no-error-on-unmatched-pattern",
+    "format:check": "prettier --check \"src/\" \"test/\" \"*.ts\" --ignore-unknown --no-error-on-unmatched-pattern",
+    "lint": "eslint .",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "prepublishOnly": "node -e \"if(!process.env.SAFE_PUBLISH){console.error('Error: Please use @camera.ui/cli to publish the plugin:\\n  npm run publish:latest\\n');process.exit(1)}\"",
+    "publish:beta": "npm run bundle && cui publish --beta",
+    "publish:latest": "npm run bundle && cui publish --latest"
+  },
+  "dependencies": {
+    "@seydx/rtsp": "^2.1.5",
+    "multicast-dns": "^7.2.5"
+  },
+  "devDependencies": {
+    "@camera.ui/cli": "^0.1.2",
+    "@camera.ui/sdk": "^1.4.7",
+    "@eslint/js": "^9.39.5",
+    "@types/multicast-dns": "^7.2.4",
+    "@types/node": "^24.19.2",
+    "cross-env": "^10.1.0",
+    "eslint": "^9.39.2",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
+    "rimraf": "^6.1.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1"
+  },
+  "engines": {
+    "camera.ui": ">=2.4.0",
+    "node": ">=24.5.0"
+  },
+  "os": [],
+  "cpu": [],
+  "homepage": "https://github.com/bisman-automations/camera-ui-aqara#readme",
+  "bugs": {
+    "url": "https://github.com/bisman-automations/camera-ui-aqara/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bisman-automations/camera-ui-aqara.git"
+  },
+  "keywords": [
+    "camera-ui-plugin",
+    "aqara",
+    "cameras",
+    "doorbell",
+    "two-way-audio",
+    "rtsp"
+  ],
+  "license": "MIT"
+}
