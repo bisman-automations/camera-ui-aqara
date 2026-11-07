@@ -26,16 +26,16 @@
   "devDependencies": {
     "@camera.ui/cli": "^0.1.2",
     "@camera.ui/sdk": "^1.4.7",
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@types/multicast-dns": "^7.2.4",
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "cross-env": "^10.1.0",
-    "eslint": "^9.39.2",
+    "eslint": "^10.14.0",
     "globals": "^17.14.0",
     "prettier": "^3.9.10",
     "rimraf": "^6.1.4",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.72.1"
   },
   "engines": {
