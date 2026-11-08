@@ -47,7 +47,7 @@ export class TalkRelayManager {
   /** Offer these discovered cameras in the relay form's Camera list. */
   public async setCameras(cameras: RelayCameraChoice[]): Promise<void> {
     this.cameras = cameras;
-    await this.storage.changeSchema('relayCamera', this.cameraField()).catch((error: unknown) => this.logger.debug('Could not update the camera list:', error));
+    await this.quietly(() => this.storage.changeSchema('relayCamera', this.cameraField()), 'update the camera list');
   }
 
   /** A camera found at a new address: move the relays made for it there. */
@@ -59,7 +59,7 @@ export class TalkRelayManager {
       await this.save();
       await this.running.get(relay.id)?.stop();
       this.running.delete(relay.id);
-      await this.storage.changeSchema(`relay-${relay.id}`, this.relayField(relay)).catch(() => undefined);
+      await this.quietly(() => this.storage.changeSchema(`relay-${relay.id}`, this.relayField(relay)), 'update the relay address');
       await this.run(relay);
     }
   }
@@ -209,8 +209,8 @@ export class TalkRelayManager {
     await this.save();
     await this.running.get(id)?.stop();
     this.running.delete(id);
-    await this.storage.removeSchema(`relay-${id}`).catch(() => undefined);
-    await this.storage.removeSchema(`relay-remove-${id}`).catch(() => undefined);
+    await this.quietly(() => this.storage.removeSchema(`relay-${id}`), 'remove the relay address');
+    await this.quietly(() => this.storage.removeSchema(`relay-remove-${id}`), 'remove the Remove button');
     await this.setCameras(this.cameras);
     this.logger.log(`Removed the talk relay "${relay.name}"`);
   }
@@ -257,6 +257,19 @@ export class TalkRelayManager {
       color: 'danger',
       onSet: async () => this.remove(relay.id),
     });
+  }
+
+  /**
+   * Run a storage call that may fail without stopping anything. Awaited inside
+   * try rather than chained with `.catch`: the camera.ui host can return plain
+   * values where the SDK types promise a Promise.
+   */
+  private async quietly(call: () => unknown, what: string): Promise<void> {
+    try {
+      await call();
+    } catch (error) {
+      this.logger.debug(`Could not ${what}:`, error);
+    }
   }
 
   private async save(): Promise<void> {

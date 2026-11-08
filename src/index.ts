@@ -324,17 +324,26 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
     return { toast: { type: 'success', message: `${name} added. Adopt it from the camera list.` } };
   }
 
+  /**
+   * Read the saved Maximum Call Duration. Awaited inside try rather than
+   * chained: the camera.ui host can hand back storage values directly instead
+   * of as promises, and `.then` on a plain value crashes the plugin.
+   */
+  private async loadMaxCallDuration(): Promise<void> {
+    try {
+      const value: unknown = await this.storage.getValue<number>('maxCallDuration');
+      if (value !== undefined && value !== null) this.maxCallSeconds = clampCallSeconds(value);
+    } catch (error) {
+      this.logger.debug('Could not read Maximum Call Duration:', error);
+    }
+  }
+
   private maxCallMs(): number {
     return this.maxCallSeconds * 1000;
   }
 
   private onFinishLaunching(): void {
-    void this.storage
-      .getValue<number>('maxCallDuration')
-      .then((value) => {
-        if (value !== undefined && value !== null) this.maxCallSeconds = clampCallSeconds(value);
-      })
-      .catch(() => undefined);
+    void this.loadMaxCallDuration();
     this.rediscoverTimer = setInterval(() => void this.rediscover(), REDISCOVER_INTERVAL_MS);
     // Relays load first, so discovery can move them and label the Camera list.
     void this.talkRelays
