@@ -97,9 +97,19 @@ describe('RTSP probing', () => {
     assert.equal(result.sdp, 'v=0\r\n');
   });
 
-  it('finds the channels the camera serves and stops after ch3', async () => {
+  it('finds the channels the camera serves without trying resolution names', async () => {
     const outcome = await probeRtspPaths('127.0.0.1', 'admin', 'secret', { port });
     assert.deepEqual(outcome, { paths: ['ch1', 'ch2'] });
+  });
+
+  it("finds the G5 Pro's four channels", async () => {
+    served.add('ch3').add('ch4');
+    try {
+      assert.deepEqual(await probeRtspPaths('127.0.0.1', 'admin', 'secret', { port }), { paths: ['ch1', 'ch2', 'ch3', 'ch4'] });
+    } finally {
+      served.delete('ch3');
+      served.delete('ch4');
+    }
   });
 
   it('falls back to resolution-named paths', async () => {

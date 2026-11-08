@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildCameraConfig, rolesFor, streamIndexForRole } from '../src/streams.js';
+import { buildCameraConfig, pickStreams, rolesFor, streamIndexForRole } from '../src/streams.js';
 
 describe('streams', () => {
   it('hands roles out best first', () => {
@@ -24,5 +24,12 @@ describe('streams', () => {
         ['Low', 'low-resolution', true, false, false],
       ],
     );
+  });
+
+  it('picks best, middle and smallest from more than three streams', () => {
+    assert.deepEqual(pickStreams(['ch1', 'ch2', 'ch3', 'ch4']), ['ch1', 'ch3', 'ch4']);
+    assert.deepEqual(pickStreams(['a', 'b', 'c', 'd', 'e']), ['a', 'd', 'e']);
+    assert.deepEqual(pickStreams(['ch1', 'ch3']), ['ch1', 'ch3']);
+    assert.deepEqual(pickStreams([]), []);
   });
 });

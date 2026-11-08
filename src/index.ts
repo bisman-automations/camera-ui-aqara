@@ -6,7 +6,7 @@ import { discoverMdns } from './mdns.js';
 import { isDoorbell, modelName } from './models.js';
 import { discoverOnvif, OnvifClient } from './onvif.js';
 import { probeRtspPaths, redact, stripCredentials } from './rtsp.js';
-import { buildCameraConfig } from './streams.js';
+import { buildCameraConfig, pickStreams } from './streams.js';
 import { clampCallSeconds, DEFAULT_MAX_CALL_MS } from './talkback.js';
 import { TalkRelayManager } from './talk-relays.js';
 
@@ -216,7 +216,7 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
       const onvifAddress = stringSetting(settings.onvifAddress) || candidate?.onvifAddress || `http://${host}/onvif/device_service`;
       const client = new OnvifClient(onvifAddress, username, password, { logger: this.discoveryLogger });
       const device = await client.getDeviceInformation().catch(() => undefined);
-      const streams = (await client.getStreams()).slice(0, 3);
+      const streams = pickStreams(await client.getStreams());
       if (streams.length === 0) throw new Error('The camera answered ONVIF but reported no video streams');
       initial.onvifAddress = onvifAddress;
       initial.onvifStreams = streams.map((stream) => stripCredentials(stream.uri));
@@ -231,7 +231,7 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
         const hint = probe.error === 'unreachable' ? ' Make sure RTSP is turned on for this camera in the Aqara app.' : '';
         throw new Error(`${probe.message}.${hint}`);
       }
-      initial.rtspPaths = probe.paths.slice(0, 3);
+      initial.rtspPaths = pickStreams(probe.paths);
       initial.rtspCheckedHost = host;
       streamCount = initial.rtspPaths.length;
       this.logger.log(`RTSP streams: ${initial.rtspPaths.join(', ')}`);

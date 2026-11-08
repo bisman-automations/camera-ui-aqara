@@ -1,7 +1,7 @@
 import { OnvifClient } from './onvif.js';
 import { TalkRelay } from './relay.js';
 import { aqaraRtspUrl, DEFAULT_RTSP_PATHS, probeRtspPaths, redact, stripCredentials, withCredentials } from './rtsp.js';
-import { streamIndexForRole } from './streams.js';
+import { pickStreams, streamIndexForRole } from './streams.js';
 
 import type { CameraDevice, DeviceStorage, JsonSchema, LoggerService, StreamingInterface } from '@camera.ui/sdk';
 import type { AqaraCameraStorage, AqaraInitialSettings, Logger } from './types.js';
@@ -117,7 +117,7 @@ export class AqaraCamera {
         this.streams = await this.resolveOnvifStreams();
       } else {
         const paths = await this.resolveRtspPaths();
-        this.streams = paths.slice(0, 3).map((path) => aqaraRtspUrl(host, username, password, path));
+        this.streams = pickStreams(paths).map((path) => aqaraRtspUrl(host, username, password, path));
       }
     } catch (error) {
       this.log.error(`Could not get the camera's streams: ${(error as Error).message}`);
@@ -148,7 +148,7 @@ export class AqaraCamera {
       this.log.warn(`Could not check which RTSP streams the camera serves (${probe.message}), using ${fallback.join(', ')}`);
       return fallback;
     }
-    this.storage.values.rtspPaths = probe.paths.slice(0, 3);
+    this.storage.values.rtspPaths = pickStreams(probe.paths);
     this.storage.values.rtspCheckedHost = host;
     await this.storage.save();
     this.log.log(`RTSP streams: ${this.storage.values.rtspPaths.join(', ')}`);
@@ -165,7 +165,7 @@ export class AqaraCamera {
     const address = this.storage.values.onvifAddress || `http://${host}/onvif/device_service`;
     try {
       const client = new OnvifClient(address, username, password, { logger: this.relayLogger });
-      const streams = (await client.getStreams()).slice(0, 3).map((stream) => stream.uri);
+      const streams = pickStreams(await client.getStreams()).map((stream) => stream.uri);
       if (streams.length === 0) throw new Error('the camera reported no video streams');
       this.storage.values.onvifStreams = streams.map(stripCredentials);
       await this.storage.save();

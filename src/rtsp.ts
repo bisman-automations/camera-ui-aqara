@@ -8,11 +8,11 @@ import { RTSP_PORT } from './protocol.js';
 
 /**
  * Stream paths Aqara cameras are known to serve on port 8554. Most models use
- * ch1 (high), ch2 (medium) and ch3 (low); some doorbells, the G3 and the G5
+ * ch1 (high), ch2 (medium) and ch3 (low), the G5 Pro adds ch4; some doorbells, the G3 and the G5
  * Pro name the stream after its resolution instead.
  */
 export const DEFAULT_RTSP_PATHS = ['ch1', 'ch2', 'ch3'];
-export const CANDIDATE_RTSP_PATHS = ['ch1', 'ch2', 'ch3', '1520p', '1296p', '1080p', '720p', '360p'];
+export const CANDIDATE_RTSP_PATHS = ['ch1', 'ch2', 'ch3', 'ch4', '1520p', '1296p', '1080p', '720p', '360p'];
 
 /** The camera's own RTSP stream at a path such as ch1. */
 export function aqaraRtspUrl(host: string, username: string, password: string, path: string, port = RTSP_PORT): string {
@@ -45,7 +45,7 @@ export async function probeRtspPaths(
     }
     if (result.status === 200) found.push(path);
     // Cameras that use the chN names do not also serve resolution names.
-    if (path === 'ch3' && found.length > 0) break;
+    if (path === 'ch4' && found.length > 0) break;
   }
   if (found.length === 0) return { error: 'no-streams', message: `The camera serves none of the known stream paths (${candidates.join(', ')})` };
   return { paths: found };

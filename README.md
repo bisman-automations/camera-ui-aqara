@@ -101,7 +101,7 @@ Each camera's settings page in camera.ui has:
 | IP Address | Updated automatically when the camera is found at a new address. |
 | Username, Password | The RTSP or ONVIF credentials from the Aqara app. |
 | ONVIF Address | The camera's ONVIF device service (ONVIF only). |
-| RTSP Streams | The stream paths on port 8554, best first (RTSP only). Usually `ch1`, `ch2`, `ch3`; some models use names like `1080p` and `360p`. They're found by asking the camera when it's added, when you switch it to RTSP, and when its address changes. |
+| RTSP Streams | The stream paths on port 8554, best first (RTSP only). Usually `ch1`, `ch2`, `ch3` (the G5 Pro adds `ch4`); some models use names like `1080p` and `360p`. With four streams, High, Medium and Low get the best, the second smallest and the smallest. They're found by asking the camera when it's added, when you switch it to RTSP, and when its address changes. |
 | Two-Way Audio | Turn off to free the speaker for other apps, or to send video straight from the camera without the relay. |
 
 Changes take effect right away.

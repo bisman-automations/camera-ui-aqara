@@ -13,6 +13,18 @@ const SOURCE_NAMES: Record<StreamingRole, string> = {
   'low-resolution': 'Low',
 };
 
+/**
+ * Choose up to three of a camera's streams, given best first: the best for
+ * High, the smallest for Low, and for Medium the one just above the smallest.
+ * With four channels (the G5 Pro's 1520p, 1080p, 720p and 360p) that is
+ * 1520p, 720p and 360p, so Low, used for snapshots and detection, is the
+ * lightest stream.
+ */
+export function pickStreams<T>(streams: T[]): T[] {
+  if (streams.length <= 3) return [...streams];
+  return [streams[0], streams[streams.length - 2], streams[streams.length - 1]];
+}
+
 /** The streaming role each of `count` streams (best first) gets. More than three are cut. */
 export function rolesFor(count: number): StreamingRole[] {
   return ROLES_BY_COUNT[Math.min(Math.max(count, 0), 3)] ?? [];
