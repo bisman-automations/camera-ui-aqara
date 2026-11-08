@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-11-07
+
+### Changed
+
+- First release published to npm. It replaces the earlier `camera-ui-aqara` 2.x releases, which were withdrawn from npm. The version jumps to 3.0.0 so that camera.ui offers it as an update over any 2.x still installed.
+
+### Added
+
+- Everything from 1.0.0: Aqara cameras and doorbells in camera.ui over the local network, by RTSP or ONVIF, with discovery, up to three streams per camera and two-way audio through Aqara's LAN talk protocol.
+
 ## [1.0.0] - 2026-11-07
 
 ### Added
@@ -16,4 +26,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two-way audio through Aqara's LAN talk protocol, offered to camera.ui as an RTSP talkback channel.
 - Cameras follow their new address when their IP changes.
 
+[3.0.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v1.0.0...v3.0.0
 [1.0.0]: https://github.com/bisman-automations/camera-ui-aqara/releases/tag/v1.0.0

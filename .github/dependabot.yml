@@ -15,6 +15,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    ignore:
+      # Major TypeScript releases wait until typescript-eslint supports them.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-tools:
         dependency-type: "development"
