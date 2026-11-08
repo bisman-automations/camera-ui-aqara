@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-11-07
+
+### Added
+
+- The talk relay form has a **Camera** list of the Aqara cameras found on the network, so adding a relay only needs the RTSP username and password. **Not listed** still takes an IP address.
+- Talk relays made from the list follow their camera to a new IP address.
+- When adding cameras, discovered cameras that already have a talk relay show "(has a talk relay)" after their name.
+
 ## [3.1.0] - 2026-11-07
 
 ### Added
@@ -41,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two-way audio through Aqara's LAN talk protocol, offered to camera.ui as an RTSP talkback channel.
 - Cameras follow their new address when their IP changes.
 
+[3.2.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v1.0.0...v3.0.0
 [1.0.0]: https://github.com/bisman-automations/camera-ui-aqara/releases/tag/v1.0.0

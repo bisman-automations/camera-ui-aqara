@@ -1,9 +1,9 @@
 import { TalkRelay } from './relay.js';
 import { aqaraRtspUrl, describe } from './rtsp.js';
-import { parseRelays, relayFromForm, relayUrl, serializeRelays } from './talk-relay-config.js';
+import { cameraChoices, parseRelays, relayFromForm, relayUrl, serializeRelays } from './talk-relay-config.js';
 
 import type { DeviceStorage, FormSubmitResponse, JsonSchema, LoggerService } from '@camera.ui/sdk';
-import type { RelayFormValues, TalkRelayConfig } from './talk-relay-config.js';
+import type { RelayCameraChoice, RelayFormValues, TalkRelayConfig } from './talk-relay-config.js';
 import type { AqaraPluginStorage, Logger } from './types.js';
 
 const STORAGE_KEY = 'talkRelays';
@@ -17,6 +17,7 @@ const STORAGE_KEY = 'talkRelays';
  */
 export class TalkRelayManager {
   private configs: TalkRelayConfig[] = [];
+  private cameras: RelayCameraChoice[] = [];
   private readonly running = new Map<string, TalkRelay>();
   private readonly relayLogger: Logger;
 
@@ -37,6 +38,59 @@ export class TalkRelayManager {
     return this.configs;
   }
 
+  /** Whether a talk relay serves the camera with this device id or address. */
+  public hasRelay(deviceId: string | undefined, host: string): boolean {
+    return this.configs.some((relay) => (deviceId && relay.deviceId === deviceId) || relay.host === host);
+  }
+
+  /** Offer these discovered cameras in the relay form's Camera list. */
+  public async setCameras(cameras: RelayCameraChoice[]): Promise<void> {
+    this.cameras = cameras;
+    await this.storage.changeSchema('relayCamera', this.cameraField()).catch((error: unknown) => this.logger.debug('Could not update the camera list:', error));
+  }
+
+  /** A camera found at a new address: move the relays made for it there. */
+  public async followCamera(deviceId: string, host: string): Promise<void> {
+    for (const relay of this.configs) {
+      if (relay.deviceId !== deviceId || relay.host === host) continue;
+      this.logger.log(`Talk relay "${relay.name}": camera moved from ${relay.host} to ${host}`);
+      relay.host = host;
+      await this.save();
+      await this.running.get(relay.id)?.stop();
+      this.running.delete(relay.id);
+      await this.storage.changeSchema(`relay-${relay.id}`, this.relayField(relay)).catch(() => undefined);
+      await this.run(relay);
+    }
+  }
+
+  private cameraField(): JsonSchema {
+    const { values, labels } = cameraChoices(this.cameras, this.configs);
+    return {
+      type: 'string',
+      key: 'relayCamera',
+      title: 'Talk Relay: Camera',
+      description:
+        'Two-way audio for an Aqara camera that another plugin manages, so it does not have to be added again. Pick the camera; the list shows the Aqara cameras found on the network.',
+      enum: values,
+      enumLabels: labels,
+      defaultValue: values[0],
+      store: false,
+      required: false,
+    };
+  }
+
+  private relayField(relay: TalkRelayConfig): JsonSchema {
+    return {
+      type: 'string',
+      key: `relay-${relay.id}`,
+      title: `Talk Relay: ${relay.name}`,
+      description: `Camera ${relay.host}, stream ${relay.path}${relay.deviceId ? ', follows the camera when its address changes' : ''}. Use this address as the camera's High source.`,
+      defaultValue: relayUrl(relay),
+      store: false,
+      readonly: true,
+    };
+  }
+
   /** The fixed part of the plugin settings: the add-relay form. */
   public schema(): JsonSchema[] {
     return [
@@ -49,12 +103,12 @@ export class TalkRelayManager {
         hidden: true,
         readonly: true,
       },
+      this.cameraField(),
       {
         type: 'string',
         key: 'relayName',
         title: 'Talk Relay: Name',
-        description:
-          'Two-way audio for an Aqara camera that another plugin manages, so it does not have to be added again. Name the relay after the camera; the name becomes part of its address.',
+        description: "Optional for a camera picked from the list, which brings its own name. The name becomes part of the relay's address.",
         store: false,
         required: false,
       },
@@ -62,7 +116,7 @@ export class TalkRelayManager {
         type: 'string',
         key: 'relayHost',
         title: 'Talk Relay: Camera IP Address',
-        description: "The camera's IP address.",
+        description: `Only for a camera that is not in the list ("Not listed").`,
         store: false,
         required: false,
       },
@@ -129,7 +183,7 @@ export class TalkRelayManager {
   private async add(value: unknown): Promise<FormSubmitResponse> {
     const raw = (value ?? {}) as Record<string, unknown>;
     const form = (raw.config ?? raw) as RelayFormValues;
-    const result = relayFromForm(form, this.configs);
+    const result = relayFromForm(form, this.configs, this.cameras);
     if ('error' in result) return { toast: { type: 'warning', message: result.error } };
     const relay = result.relay;
 
@@ -139,6 +193,7 @@ export class TalkRelayManager {
     this.configs = [...this.configs, relay];
     await this.save();
     await this.showRelay(relay);
+    await this.setCameras(this.cameras);
     const started = await this.run(relay);
     if (!started) {
       return { toast: { type: 'warning', message: `Saved, but the relay could not listen on port ${relay.port}. Remove it and pick another port.` } };
@@ -155,6 +210,7 @@ export class TalkRelayManager {
     this.running.delete(id);
     await this.storage.removeSchema(`relay-${id}`).catch(() => undefined);
     await this.storage.removeSchema(`relay-remove-${id}`).catch(() => undefined);
+    await this.setCameras(this.cameras);
     this.logger.log(`Removed the talk relay "${relay.name}"`);
   }
 
@@ -190,15 +246,7 @@ export class TalkRelayManager {
   }
 
   private async showRelay(relay: TalkRelayConfig): Promise<void> {
-    await this.storage.addSchema({
-      type: 'string',
-      key: `relay-${relay.id}`,
-      title: `Talk Relay: ${relay.name}`,
-      description: `Camera ${relay.host}, stream ${relay.path}. Use this address as the camera's High source.`,
-      defaultValue: relayUrl(relay),
-      store: false,
-      readonly: true,
-    });
+    await this.storage.addSchema(this.relayField(relay));
     await this.storage.addSchema({
       type: 'button',
       key: `relay-remove-${relay.id}`,

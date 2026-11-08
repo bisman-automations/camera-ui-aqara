@@ -16,6 +16,35 @@ export interface TalkRelayConfig {
   /** Camera stream path, e.g. ch1. */
   path: string;
   port: number;
+  /** Aqara device id when the relay was made from a discovered camera; lets the relay follow IP changes. */
+  deviceId?: string;
+}
+
+/** A camera discovery found, offered in the relay form's Camera list. */
+export interface RelayCameraChoice {
+  /** Discovered-camera id, the value of the Camera list. */
+  id: string;
+  name: string;
+  host: string;
+  deviceId?: string;
+  model?: string;
+}
+
+/** The Camera list's entry for typing the IP address in. */
+export const MANUAL_CAMERA = 'manual';
+
+/** Values and labels for the relay form's Camera list: discovered cameras first, then manual entry. */
+export function cameraChoices(cameras: RelayCameraChoice[], relays: TalkRelayConfig[]): { values: string[]; labels: Record<string, string> } {
+  const values: string[] = [];
+  const labels: Record<string, string> = {};
+  for (const camera of cameras) {
+    values.push(camera.id);
+    const hasRelay = relays.some((relay) => (camera.deviceId && relay.deviceId === camera.deviceId) || relay.host === camera.host);
+    labels[camera.id] = `${camera.name} (${camera.host}${camera.model ? `, ${camera.model}` : ''})${hasRelay ? ' · has a talk relay' : ''}`;
+  }
+  values.push(MANUAL_CAMERA);
+  labels[MANUAL_CAMERA] = 'Not listed: enter its IP address';
+  return { values, labels };
 }
 
 export const FIRST_RELAY_PORT = 8560;
@@ -70,6 +99,7 @@ export function relayUrl(relay: TalkRelayConfig): string {
 }
 
 export interface RelayFormValues {
+  relayCamera?: unknown;
   relayName?: unknown;
   relayHost?: unknown;
   relayUsername?: unknown;
@@ -82,10 +112,16 @@ export interface RelayFormValues {
  * Turn the add-relay form into a relay, or explain what is wrong with it.
  * Names, paths and ports must be unique among the relays.
  */
-export function relayFromForm(form: RelayFormValues, existing: TalkRelayConfig[]): { relay: TalkRelayConfig } | { error: string } {
+export function relayFromForm(
+  form: RelayFormValues,
+  existing: TalkRelayConfig[],
+  cameras: RelayCameraChoice[] = [],
+): { relay: TalkRelayConfig } | { error: string } {
   const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : '');
-  const name = text(form.relayName);
-  const host = text(form.relayHost);
+  const picked = cameras.find((camera) => camera.id === text(form.relayCamera));
+  // A camera picked from the list supplies the address and a default name; typed values still win.
+  const name = text(form.relayName) || picked?.name || '';
+  const host = text(form.relayHost) || picked?.host || '';
   const username = text(form.relayUsername);
   const password = typeof form.relayPassword === 'string' ? form.relayPassword : '';
   const path = text(form.relayPath).replace(/^\/+/, '') || 'ch1';
@@ -93,7 +129,7 @@ export function relayFromForm(form: RelayFormValues, existing: TalkRelayConfig[]
   const port = portText ? Number(portText) : nextFreePort(existing);
 
   if (!name) return { error: 'Enter a name for the relay, e.g. the camera name.' };
-  if (!host) return { error: "Enter the camera's IP address." };
+  if (!host) return { error: 'Pick the camera from the list, or enter its IP address.' };
   if (!username || !password) return { error: "Enter the camera's RTSP username and password from the Aqara app." };
   if (!Number.isInteger(port) || port < 1024 || port > 65535) return { error: 'Use a port between 1024 and 65535.' };
 
@@ -102,5 +138,11 @@ export function relayFromForm(form: RelayFormValues, existing: TalkRelayConfig[]
   if (existing.some((relay) => relay.id === id)) return { error: `There is already a relay named "${name}".` };
   if (existing.some((relay) => relay.port === port)) return { error: `Port ${port} is already used by another relay.` };
 
-  return { relay: { id, name, host, username, password, path, port } };
+  if (picked?.deviceId && existing.some((relay) => relay.deviceId === picked.deviceId)) {
+    return { error: `${picked.name} already has a talk relay.` };
+  }
+
+  const relay: TalkRelayConfig = { id, name, host, username, password, path, port };
+  if (picked?.deviceId && picked.host === host) relay.deviceId = picked.deviceId;
+  return { relay };
 }

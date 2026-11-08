@@ -66,8 +66,10 @@ Open the Aqara plugin's settings, enter the camera's IP address (and a name if y
 If an Aqara camera is already set up in camera.ui through another plugin (the generic RTSP or ONVIF one, say), you can give it two-way audio without adding it again. It keeps its recordings, events, zones and HomeKit pairing. The Aqara plugin runs a **talk relay** for it: a local address that serves the camera's video with a talkback channel added.
 
 1. Open the Aqara plugin's settings and fill in the **Talk Relay** fields:
-   - **Name**: the camera's name. It becomes part of the relay's address.
-   - **Camera IP Address**, **RTSP Username** and **RTSP Password**: from the Aqara app.
+   - **Camera**: pick the camera. The list shows the Aqara cameras found on your network that the Aqara plugin hasn't added. Choose **Not listed** to enter the IP address yourself.
+   - **Name**: optional for a camera from the list, which brings its own name. The name becomes part of the relay's address.
+   - **Camera IP Address**: only for a camera that isn't listed.
+   - **RTSP Username** and **RTSP Password**: from the Aqara app.
    - **Stream**: `ch1` (best quality) unless your model names it differently, such as `1080p`.
    - **Port**: leave empty to use the next free port from 8560.
 2. Press **Add Talk Relay**. The plugin checks that the camera answers with these credentials, then shows the relay's address, for example `rtsp://127.0.0.1:8560/front-door`.
@@ -75,7 +77,9 @@ If an Aqara camera is already set up in camera.ui through another plugin (the ge
 
 Talk now works for that camera like it does for cameras the Aqara plugin added. Only the source pointed at the relay carries talk, so use it for the High source. The address works only on the machine camera.ui runs on. To undo it, point the High source back at the camera's own stream, then press **Remove** next to the relay.
 
-Unlike cameras added through the Aqara plugin, a relay doesn't follow the camera to a new IP address. Give the camera a fixed address in your router.
+A relay made for a camera picked from the list follows that camera to a new IP address, like cameras the Aqara plugin added. A relay for a camera entered by hand doesn't, so give that camera a fixed address in your router.
+
+When you add cameras, discovered cameras that already have a talk relay show **(has a talk relay)** after their name, so you don't add one twice by mistake. camera.ui doesn't let the Aqara plugin see cameras other plugins added, so it can only tell for cameras with a relay.
 
 ## Moving a camera to the Aqara plugin
 

@@ -22,6 +22,7 @@ import type {
   PluginAPI,
 } from '@camera.ui/sdk';
 import type { Candidate } from './discovery.js';
+import type { RelayCameraChoice } from './talk-relay-config.js';
 import type { AqaraInitialSettings, AqaraPluginStorage, ConnectionMode, Logger } from './types.js';
 
 const DISCOVERY_TIMEOUT_MS = 4000;
@@ -107,12 +108,14 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
       if (this.isAdopted(candidate)) continue;
       offered.push({
         id: candidate.id,
-        name: candidate.name,
+        // Cameras another plugin already has, with a talk relay made for them, are labeled so they are not added twice by mistake.
+        name: this.talkRelays.hasRelay(candidate.deviceId, candidate.host) ? `${candidate.name} (has a talk relay)` : candidate.name,
         manufacturer: 'Aqara',
         model: modelName(candidate.modelCode, candidate.hardware),
         address: candidate.host,
       });
     }
+    await this.talkRelays.setCameras(candidates.filter((candidate) => !this.isAdopted(candidate)).map((candidate) => this.relayChoice(candidate)));
     return offered;
   }
 
@@ -245,22 +248,38 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
     return false;
   }
 
-  /** Point adopted cameras at their new address when mDNS finds them somewhere else. */
+  /** Point adopted cameras and talk relays at their new address when mDNS finds them somewhere else. */
   private async followMovedCameras(candidates: Candidate[]): Promise<void> {
     for (const candidate of candidates) {
       if (!candidate.deviceId) continue;
       for (const camera of this.cameras.values()) {
         if (camera.deviceId === candidate.deviceId && camera.host !== candidate.host) await camera.updateHost(candidate.host);
       }
+      await this.talkRelays.followCamera(candidate.deviceId, candidate.host);
     }
   }
 
+  private relayChoice(candidate: Candidate): RelayCameraChoice {
+    return {
+      id: candidate.id,
+      name: candidate.name,
+      host: candidate.host,
+      deviceId: candidate.deviceId,
+      model: modelName(candidate.modelCode, candidate.hardware),
+    };
+  }
+
+  /**
+   * Look for Aqara cameras in the background: to follow cameras and relays to
+   * new addresses, and to keep the talk relay form's Camera list current.
+   * Adopted cameras are left out of that list, they have two-way audio already.
+   */
   private async rediscover(): Promise<void> {
-    const watched = [...this.cameras.values()].some((camera) => camera.deviceId);
-    if (!watched) return;
     try {
-      const mdns = await discoverMdns(DISCOVERY_TIMEOUT_MS, this.discoveryLogger);
-      await this.followMovedCameras(mergeDiscoveries(mdns, []));
+      const candidates = mergeDiscoveries(await discoverMdns(DISCOVERY_TIMEOUT_MS, this.discoveryLogger), []);
+      for (const candidate of candidates) this.candidates.set(candidate.id, candidate);
+      await this.followMovedCameras(candidates);
+      await this.talkRelays.setCameras(candidates.filter((candidate) => !this.isAdopted(candidate)).map((candidate) => this.relayChoice(candidate)));
     } catch (error) {
       this.logger.debug('Background discovery failed:', error);
     }
@@ -288,9 +307,12 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
   }
 
   private onFinishLaunching(): void {
-    this.talkRelays.start().catch((error: unknown) => this.logger.error('Could not start the talk relays:', error));
     this.rediscoverTimer = setInterval(() => void this.rediscover(), REDISCOVER_INTERVAL_MS);
-    void this.rediscover();
+    // Relays load first, so discovery can move them and label the Camera list.
+    void this.talkRelays
+      .start()
+      .catch((error: unknown) => this.logger.error('Could not start the talk relays:', error))
+      .then(() => this.rediscover());
   }
 
   private async onShutdown(): Promise<void> {
