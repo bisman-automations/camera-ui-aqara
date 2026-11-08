@@ -35,7 +35,10 @@ export class AqaraCamera {
   private queue: Promise<void> = Promise.resolve();
   private stopped = false;
 
-  constructor(private readonly cameraDevice: CameraDevice) {
+  constructor(
+    private readonly cameraDevice: CameraDevice,
+    private readonly maxCallMs?: () => number,
+  ) {
     this.log = cameraDevice.logger;
     this.relayLogger = {
       log: (...args) => this.log.log(...args),
@@ -177,7 +180,7 @@ export class AqaraCamera {
 
   private async startRelay(host: string): Promise<void> {
     try {
-      this.relay = await TalkRelay.start({ source: this.streams[0], cameraHost: host, path: 'live', logger: this.relayLogger });
+      this.relay = await TalkRelay.start({ source: this.streams[0], cameraHost: host, path: 'live', maxCallMs: this.maxCallMs, logger: this.relayLogger });
       this.log.debug('Two-way audio relay ready');
     } catch (error) {
       this.log.error('Could not start the two-way audio relay, video goes direct without talkback:', error);

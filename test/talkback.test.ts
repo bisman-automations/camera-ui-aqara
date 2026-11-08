@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { describe, it } from 'node:test';
 
-import { AqaraTalkback } from '../src/talkback.js';
+import { AqaraTalkback, clampCallSeconds } from '../src/talkback.js';
 
 import type { TalkClientFactory, Transcoder } from '../src/talkback.js';
 
@@ -164,5 +164,46 @@ describe('AqaraTalkback', () => {
       [2],
     );
     await talkback.stop();
+  });
+
+  it('ends a call at the maximum duration and stays muted until the audio pauses', async () => {
+    const clients: FakeClient[] = [];
+    const talkback = new AqaraTalkback({
+      host: '192.0.2.10',
+      createTranscoder: fakeTranscoder().factory,
+      createClient: (() => {
+        const client = new FakeClient();
+        clients.push(client);
+        return client;
+      }) as unknown as TalkClientFactory,
+      idleTimeoutMs: 150,
+      maxCallMs: () => 120,
+    });
+
+    // A talker that never stops sending, like an open HomeKit mic.
+    let marker = 0;
+    const sender = setInterval(() => talkback.push(Buffer.from([++marker & 0xff])), 20);
+    await wait(500);
+    assert.equal(clients.length, 1, 'no new call while the audio keeps coming');
+    assert.equal(clients[0].disconnects, 1, 'the call was cut off');
+    assert.equal(talkback.active, false);
+
+    // Once the talker pauses, the next press starts a fresh call.
+    clearInterval(sender);
+    await wait(250);
+    talkback.push(Buffer.from([1]));
+    await wait(60);
+    assert.equal(clients.length, 2);
+    await talkback.stop();
+  });
+
+  it('reads the call limit setting', () => {
+    assert.equal(clampCallSeconds(180), 180);
+    assert.equal(clampCallSeconds('45'), 45);
+    assert.equal(clampCallSeconds(0), 0);
+    assert.equal(clampCallSeconds(-5), 0);
+    assert.equal(clampCallSeconds(3), 10);
+    assert.equal(clampCallSeconds(99_999), 3600);
+    assert.equal(clampCallSeconds('nope'), 180);
   });
 });

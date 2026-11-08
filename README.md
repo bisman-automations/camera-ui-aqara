@@ -106,9 +106,11 @@ Each camera's settings page in camera.ui has:
 
 Changes take effect right away.
 
+The Aqara plugin's own settings also have **Maximum Call Duration**: how many seconds a talk call may last before the camera's speaker is cut off, 180 by default, for every camera and talk relay. It keeps a call that was left open from holding the speaker. 0 turns the limit off.
+
 ## Supported models
 
-Any Aqara camera with RTSP or ONVIF should work for video. Two-way audio has been confirmed on the **Camera G100** and the **G400 Video Doorbell**. These models share the same talk protocol and are expected to work too:
+Any Aqara camera with RTSP or ONVIF should work for video. Two-way audio through Aqara's local talk protocol has been confirmed on the **Camera G100**, the **G400 Video Doorbell** and the **G410 Doorbell Camera Hub**. These models share the same talk protocol and are expected to work too:
 
 Camera Hub G2H, G2H Pro, G3, G5 Pro (Wi-Fi and PoE), Camera E1, G4 Doorbell and G410 Doorbell Camera Hub.
 
@@ -129,6 +131,9 @@ RTSP is off for this camera in the Aqara app, or the camera is on a network came
 - Make sure **Two-Way Audio** is on for the camera.
 - camera.ui has to be able to reach the camera on TCP port 54324 and UDP port 54323.
 - The camera takes one voice session at a time. While the Aqara app or another integration is talking, the camera refuses the session. The plugin logs that and tries again 15 seconds later.
+
+**Talk stops after a few minutes.**
+That's the **Maximum Call Duration** in the Aqara plugin's settings, 3 minutes by default. It cuts the speaker off when a call is left open, for example when HomeKit keeps the microphone on. Raise it, or set it to 0 to turn the limit off. After a cutoff, talk stays muted until you stop and start talking again.
 
 **Talk works only for a moment.**
 Turn on debug logging for the camera in camera.ui and look for "Voice session" and "heartbeat" lines. A camera that stops answering heartbeats ends the session.

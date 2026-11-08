@@ -33,7 +33,25 @@ export interface TalkbackOptions {
   cooldownMs?: number;
   /** Frames queued beyond this are dropped oldest first, so talk never lags far behind. */
   maxQueuedFrames?: number;
+  /**
+   * Longest a call may last, in ms, read when each call starts. The speaker
+   * is cut off after this, and talk stays muted until the incoming audio
+   * pauses, so a call left open (HomeKit can keep the mic streaming silence)
+   * cannot hold the camera's speaker. 0 means no limit.
+   */
+  maxCallMs?: () => number;
   logger?: Logger;
+}
+
+/** Default maximum call duration, 3 minutes. */
+export const DEFAULT_MAX_CALL_MS = 180_000;
+
+/** Seconds from the Maximum Call Duration setting: 0 (no limit) or 10 to 3600. */
+export function clampCallSeconds(value: unknown): number {
+  const seconds = Math.round(Number(value));
+  if (!Number.isFinite(seconds)) return DEFAULT_MAX_CALL_MS / 1000;
+  if (seconds <= 0) return 0;
+  return Math.min(Math.max(seconds, 10), 3600);
 }
 
 /**
@@ -52,6 +70,7 @@ export class AqaraTalkback {
   private readonly idleTimeoutMs: number;
   private readonly cooldownMs: number;
   private readonly maxQueuedFrames: number;
+  private readonly maxCallMs: () => number;
   private readonly logger?: Logger;
 
   private transcoder?: Transcoder;
@@ -64,6 +83,10 @@ export class AqaraTalkback {
   private nextSendAt = 0;
   private idleTimer?: NodeJS.Timeout;
   private blockedUntil = 0;
+  private callTimer?: NodeJS.Timeout;
+  /** Set when a call hit the maximum duration; cleared once incoming audio pauses. */
+  private cutOff = false;
+  private cutOffTimer?: NodeJS.Timeout;
   private lastPacketAt = 0;
   private stopping?: Promise<void>;
 
@@ -74,6 +97,7 @@ export class AqaraTalkback {
     this.idleTimeoutMs = options.idleTimeoutMs ?? 1500;
     this.cooldownMs = options.cooldownMs ?? 15_000;
     this.maxQueuedFrames = options.maxQueuedFrames ?? 8;
+    this.maxCallMs = options.maxCallMs ?? (() => DEFAULT_MAX_CALL_MS);
     this.logger = options.logger;
   }
 
@@ -90,6 +114,12 @@ export class AqaraTalkback {
 
   /** Feed one talkback RTP packet in the advertised codec. */
   public push(rtp: Buffer): void {
+    if (this.cutOff) {
+      // Keep muting until the talker stops sending; a new press then starts a new call.
+      clearTimeout(this.cutOffTimer);
+      this.cutOffTimer = setTimeout(() => (this.cutOff = false), this.idleTimeoutMs);
+      return;
+    }
     if (Date.now() < this.blockedUntil || this.stopping) return;
     this.lastPacketAt = Date.now();
     this.armIdleTimer();
@@ -147,6 +177,7 @@ export class AqaraTalkback {
       try {
         await client.connect();
         this.logger?.debug?.('Voice session open');
+        this.armCallTimer();
         if (this.client === client) this.startPacer();
       } catch (error) {
         this.logger?.warn?.((error as Error).message);
@@ -195,11 +226,26 @@ export class AqaraTalkback {
     await this.stop();
   }
 
+  private armCallTimer(): void {
+    clearTimeout(this.callTimer);
+    const limit = this.maxCallMs();
+    if (!(limit > 0)) return;
+    this.callTimer = setTimeout(() => {
+      this.logger?.log?.(`Talkback reached the maximum call duration (${Math.round(limit / 1000)} s), ending the call`);
+      this.cutOff = true;
+      clearTimeout(this.cutOffTimer);
+      this.cutOffTimer = setTimeout(() => (this.cutOff = false), this.idleTimeoutMs);
+      void this.stop();
+    }, limit);
+  }
+
   private block(): void {
     this.blockedUntil = Date.now() + this.cooldownMs;
   }
 
   private async teardown(): Promise<void> {
+    clearTimeout(this.callTimer);
+    this.callTimer = undefined;
     clearTimeout(this.idleTimer);
     this.idleTimer = undefined;
     this.stopPacer();

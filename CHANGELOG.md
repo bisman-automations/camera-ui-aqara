@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-11-08
+
+### Added
+
+- **Maximum Call Duration** in the plugin settings, 180 seconds by default. A talk call that runs longer is cut off, and talk stays muted until the incoming audio pauses, so a call left open (HomeKit can keep the microphone on) can't hold the camera's speaker. 0 turns the limit off.
+- Model names for the Camera Hub G3, Camera E1 and Camera Hub G2H Pro model codes, and more Camera Hub G2H variants.
+- The RTSP stream check also tries `1296p`, a stream name the Camera Hub G3 uses.
+
 ## [3.2.0] - 2026-11-07
 
 ### Added
@@ -49,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two-way audio through Aqara's LAN talk protocol, offered to camera.ui as an RTSP talkback channel.
 - Cameras follow their new address when their IP changes.
 
+[3.3.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v1.0.0...v3.0.0

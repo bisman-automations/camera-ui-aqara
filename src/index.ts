@@ -7,6 +7,7 @@ import { isDoorbell, modelName } from './models.js';
 import { discoverOnvif, OnvifClient } from './onvif.js';
 import { probeRtspPaths, redact, stripCredentials } from './rtsp.js';
 import { buildCameraConfig } from './streams.js';
+import { clampCallSeconds, DEFAULT_MAX_CALL_MS } from './talkback.js';
 import { TalkRelayManager } from './talk-relays.js';
 
 import type {
@@ -38,10 +39,12 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
   private readonly discoveryLogger: Logger;
   private rediscoverTimer?: NodeJS.Timeout;
   private readonly talkRelays: TalkRelayManager;
+  /** Maximum call duration in seconds, from the plugin settings. */
+  private maxCallSeconds = DEFAULT_MAX_CALL_MS / 1000;
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<AqaraPluginStorage>) {
     super(logger, api, storage);
-    this.talkRelays = new TalkRelayManager(storage, logger);
+    this.talkRelays = new TalkRelayManager(storage, logger, () => this.maxCallMs());
     this.discoveryLogger = { debug: (...args) => this.logger.debug(...args) };
     this.api.on(API_EVENT.FINISH_LAUNCHING, () => this.onFinishLaunching());
     this.api.on(API_EVENT.SHUTDOWN, () => this.onShutdown());
@@ -49,6 +52,21 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
 
   override get storageSchema(): JsonSchema[] {
     return [
+      {
+        type: 'number',
+        key: 'maxCallDuration',
+        title: 'Maximum Call Duration',
+        description:
+          'Seconds a talk call may last before the camera speaker is cut off, for every camera and talk relay. Guards against a call left open. 0 turns the limit off.',
+        defaultValue: DEFAULT_MAX_CALL_MS / 1000,
+        minimum: 0,
+        maximum: 3600,
+        store: true,
+        required: false,
+        onSet: async (value) => {
+          this.maxCallSeconds = clampCallSeconds(value);
+        },
+      },
       {
         type: 'string',
         key: 'manualHost',
@@ -231,7 +249,7 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
   }
 
   private async startCamera(camera: CameraDevice, initial?: AqaraInitialSettings): Promise<void> {
-    const controller = new AqaraCamera(camera);
+    const controller = new AqaraCamera(camera, () => this.maxCallMs());
     this.cameras.set(camera.id, controller);
     try {
       await controller.initialize(initial);
@@ -306,7 +324,17 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
     return { toast: { type: 'success', message: `${name} added. Adopt it from the camera list.` } };
   }
 
+  private maxCallMs(): number {
+    return this.maxCallSeconds * 1000;
+  }
+
   private onFinishLaunching(): void {
+    void this.storage
+      .getValue<number>('maxCallDuration')
+      .then((value) => {
+        if (value !== undefined && value !== null) this.maxCallSeconds = clampCallSeconds(value);
+      })
+      .catch(() => undefined);
     this.rediscoverTimer = setInterval(() => void this.rediscover(), REDISCOVER_INTERVAL_MS);
     // Relays load first, so discovery can move them and label the Camera list.
     void this.talkRelays

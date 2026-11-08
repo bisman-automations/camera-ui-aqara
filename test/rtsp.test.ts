@@ -89,9 +89,9 @@ describe('RTSP probing', () => {
 
   it('falls back to resolution-named paths', async () => {
     served.clear();
-    served.add('1080p').add('360p');
+    served.add('1296p').add('360p');
     try {
-      assert.deepEqual(await probeRtspPaths('127.0.0.1', 'admin', 'secret', { port }), { paths: ['1080p', '360p'] });
+      assert.deepEqual(await probeRtspPaths('127.0.0.1', 'admin', 'secret', { port }), { paths: ['1296p', '360p'] });
     } finally {
       served.clear();
       served.add('ch1').add('ch2');

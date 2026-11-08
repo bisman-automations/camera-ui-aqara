@@ -35,6 +35,8 @@ export type AqaraInitialSettings = Pick<AqaraCameraStorage, 'connection' | 'host
 
 /** Plugin-level settings: the form for adding a camera by IP. */
 export interface AqaraPluginStorage {
+  /** Maximum talk call duration in seconds; 0 means no limit. */
+  maxCallDuration?: number;
   manualHost?: string;
   manualName?: string;
   /** Talk relays, JSON-encoded (see talk-relay-config.ts). */

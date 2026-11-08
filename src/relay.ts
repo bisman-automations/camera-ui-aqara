@@ -15,6 +15,8 @@ export interface TalkRelayOptions {
   port?: number;
   /** Path of the relayed stream, e.g. "live". */
   path: string;
+  /** Maximum call duration in ms, read when each call starts. */
+  maxCallMs?: () => number;
   logger: Logger;
 }
 
@@ -41,6 +43,7 @@ export class TalkRelay {
     const { logger } = options;
     const talkback = new AqaraTalkback({
       host: options.cameraHost,
+      maxCallMs: options.maxCallMs,
       logger,
       createTranscoder: (output, onError) => {
         const transcoder = new BackchannelTranscoder({ from: { ...TALKBACK_ADVERTISE }, to: { ...TALKBACK_TARGET }, output, onError, logger });

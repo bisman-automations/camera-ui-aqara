@@ -76,5 +76,7 @@ describe('models', () => {
     assert.equal(isDoorbell('lumi.camera.agl005'), false);
     assert.equal(isDoorbell(undefined, 'Front Doorbell'), true);
     assert.equal(modelName('lumi.camera.new1', 'G9'), 'G9');
+    assert.equal(modelName('lumi.camera.acn001'), 'Camera Hub G3');
+    assert.equal(modelName('LUMI.CAMERA.GWAC02'), 'Camera Hub G2H');
   });
 });

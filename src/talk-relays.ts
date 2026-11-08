@@ -24,6 +24,7 @@ export class TalkRelayManager {
   constructor(
     private readonly storage: DeviceStorage<AqaraPluginStorage>,
     private readonly logger: LoggerService,
+    private readonly maxCallMs?: () => number,
   ) {
     this.relayLogger = {
       log: (...args) => this.logger.log(...args),
@@ -234,6 +235,7 @@ export class TalkRelayManager {
         cameraHost: relay.host,
         port: relay.port,
         path: relay.id,
+        maxCallMs: this.maxCallMs,
         logger: this.relayLogger,
       });
       this.running.set(relay.id, running);
