@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - 2026-11-08
+
+### Fixed
+
+- Adding a camera over RTSP, switching one to RTSP, and adding a talk relay could fail with "The camera rejected the username or password (RTSP 401)" even with the right credentials. The credentials check now logs in on the same connection the camera issued its login challenge on, as video players do.
+
 ## [3.3.0] - 2026-11-08
 
 ### Added
@@ -57,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two-way audio through Aqara's LAN talk protocol, offered to camera.ui as an RTSP talkback channel.
 - Cameras follow their new address when their IP changes.
 
+[3.3.1]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.0.0...v3.1.0

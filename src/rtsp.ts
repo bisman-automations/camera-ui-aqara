@@ -1,6 +1,9 @@
 import { connect } from 'node:net';
 
 import { authorization, parseChallenge } from './digest.js';
+
+import type { Socket } from 'node:net';
+import type { AuthChallenge } from './digest.js';
 import { RTSP_PORT } from './protocol.js';
 
 /**
@@ -93,8 +96,11 @@ export interface DescribeResult {
 /**
  * Send an RTSP DESCRIBE for a stream, answering an auth challenge once.
  *
- * Used at adoption to check the credentials and which channels the camera
- * serves, without opening a media session.
+ * Used to check the credentials and which channels the camera serves,
+ * without opening a media session. Everything happens on one connection, the
+ * way ffmpeg does it (OPTIONS, then DESCRIBE, then DESCRIBE with the login):
+ * cameras tie the digest nonce to the connection that issued it, so a login
+ * sent on a fresh connection is refused with 401.
  */
 export async function describe(uri: string, timeoutMs = 5000): Promise<DescribeResult> {
   const url = new URL(uri);
@@ -104,67 +110,136 @@ export async function describe(uri: string, timeoutMs = 5000): Promise<DescribeR
   url.password = '';
   const target = url.toString();
 
-  const first = await request(url.hostname, Number(url.port) || 554, describeRequest(target, 1), timeoutMs);
-  if (first.status !== 401 || !username) return first;
+  const connection = await RtspConnection.open(url.hostname, Number(url.port) || 554, timeoutMs);
+  try {
+    let challenge: AuthChallenge | undefined;
+    const send = async (method: string): Promise<RtspResponse> => {
+      let response = await connection.request(method, target, challenge && authorization(challenge, method, target, username, password));
+      if (response.status === 401 && username) {
+        const next = parseChallenge(response.headers['www-authenticate']);
+        // A second 401 to a login answering the same challenge means the credentials are wrong.
+        if (!next || (challenge && next.nonce === challenge.nonce && next.scheme === challenge.scheme)) return response;
+        challenge = next;
+        response = await connection.request(method, target, authorization(challenge, method, target, username, password));
+      }
+      return response;
+    };
 
-  const challenge = parseChallenge(first.headers['www-authenticate']);
-  if (!challenge) return first;
-  return request(
-    url.hostname,
-    Number(url.port) || 554,
-    describeRequest(target, 2, authorization(challenge, 'DESCRIBE', target, username, password)),
-    timeoutMs,
-  );
-}
-
-function describeRequest(uri: string, cseq: number, auth?: string): string {
-  const lines = [`DESCRIBE ${uri} RTSP/1.0`, `CSeq: ${cseq}`, 'Accept: application/sdp', 'User-Agent: camera-ui-aqara'];
-  if (auth) lines.push(`Authorization: ${auth}`);
-  return `${lines.join('\r\n')}\r\n\r\n`;
+    const options = await send('OPTIONS');
+    if (options.status === 401 || options.status === 403) return options;
+    return await send('DESCRIBE');
+  } finally {
+    connection.close();
+  }
 }
 
 interface RtspResponse extends DescribeResult {
   headers: Record<string, string[]>;
 }
 
-function request(host: string, port: number, message: string, timeoutMs: number): Promise<RtspResponse> {
-  return new Promise<RtspResponse>((resolve, reject) => {
-    const socket = connect({ host, port });
-    let data = Buffer.alloc(0);
-    const timer = setTimeout(() => {
-      socket.destroy();
-      reject(new Error(`No RTSP answer from ${host}:${port} within ${timeoutMs} ms`));
-    }, timeoutMs);
-    const finish = (result: RtspResponse | Error): void => {
-      clearTimeout(timer);
-      socket.destroy();
-      if (result instanceof Error) reject(result);
-      else resolve(result);
-    };
+/** One RTSP control connection that sends requests in turn and reads their responses. */
+class RtspConnection {
+  private data = Buffer.alloc(0);
+  private cseq = 0;
+  private pending?: { resolve: (response: RtspResponse) => void; reject: (error: Error) => void; timer: NodeJS.Timeout };
+  private closedError?: Error;
 
-    socket.once('connect', () => socket.write(message));
-    socket.on('error', (error) => finish(new Error(`Could not reach ${host}:${port}: ${error.message}`)));
-    socket.on('data', (chunk: Buffer) => {
-      data = Buffer.concat([data, chunk]);
-      try {
-        const parsed = parseResponse(data);
-        if (parsed) finish(parsed);
-      } catch (error) {
-        finish(new Error(`${host}:${port} did not answer like an RTSP server: ${(error as Error).message}`));
-      }
+  private constructor(
+    private readonly socket: Socket,
+    private readonly label: string,
+    private readonly timeoutMs: number,
+  ) {
+    socket.on('data', (chunk: Buffer) => this.onData(chunk));
+    socket.on('error', (error) => this.fail(new Error(`Could not reach ${label}: ${error.message}`)));
+    socket.on('close', () => this.onClose());
+  }
+
+  public static open(host: string, port: number, timeoutMs: number): Promise<RtspConnection> {
+    const label = `${host}:${port}`;
+    return new Promise<RtspConnection>((resolve, reject) => {
+      const socket = connect({ host, port });
+      const timer = setTimeout(() => {
+        socket.destroy();
+        reject(new Error(`No RTSP answer from ${label} within ${timeoutMs} ms`));
+      }, timeoutMs);
+      socket.once('connect', () => {
+        clearTimeout(timer);
+        socket.removeAllListeners('error');
+        resolve(new RtspConnection(socket, label, timeoutMs));
+      });
+      socket.once('error', (error) => {
+        clearTimeout(timer);
+        reject(new Error(`Could not reach ${label}: ${error.message}`));
+      });
     });
-    socket.on('end', () => {
-      try {
-        finish(parseResponse(data, true) ?? new Error(`${host}:${port} closed the connection without an RTSP answer`));
-      } catch (error) {
-        finish(error as Error);
-      }
+  }
+
+  public request(method: string, uri: string, auth?: string): Promise<RtspResponse> {
+    if (this.closedError) return Promise.reject(this.closedError);
+    const lines = [`${method} ${uri} RTSP/1.0`, `CSeq: ${++this.cseq}`, 'User-Agent: camera-ui-aqara'];
+    if (method === 'DESCRIBE') lines.push('Accept: application/sdp');
+    if (auth) lines.push(`Authorization: ${auth}`);
+    return new Promise<RtspResponse>((resolve, reject) => {
+      const timer = setTimeout(() => this.fail(new Error(`No RTSP answer from ${this.label} within ${this.timeoutMs} ms`)), this.timeoutMs);
+      this.pending = { resolve, reject, timer };
+      this.socket.write(`${lines.join('\r\n')}\r\n\r\n`);
     });
-  });
+  }
+
+  public close(): void {
+    this.socket.destroy();
+  }
+
+  private onData(chunk: Buffer): void {
+    this.data = Buffer.concat([this.data, chunk]);
+    let response: ReturnType<typeof parseResponse>;
+    try {
+      response = parseResponse(this.data);
+    } catch (error) {
+      this.fail(new Error(`${this.label} did not answer like an RTSP server: ${(error as Error).message}`));
+      return;
+    }
+    if (!response) return;
+    this.data = this.data.subarray(response.consumed);
+    const pending = this.pending;
+    this.pending = undefined;
+    if (pending) {
+      clearTimeout(pending.timer);
+      pending.resolve(response);
+    }
+  }
+
+  private onClose(): void {
+    // A server may answer and hang up at once; hand over a response that is already complete.
+    let response: RtspResponse | undefined;
+    try {
+      response = this.data.length > 0 ? parseResponse(this.data, true) : undefined;
+    } catch {
+      response = undefined;
+    }
+    if (response && this.pending) {
+      const pending = this.pending;
+      this.pending = undefined;
+      clearTimeout(pending.timer);
+      pending.resolve(response);
+    }
+    this.fail(new Error(`${this.label} closed the connection without an RTSP answer`));
+  }
+
+  private fail(error: Error): void {
+    this.closedError ??= error;
+    const pending = this.pending;
+    this.pending = undefined;
+    if (pending) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.socket.destroy();
+  }
 }
 
 /** Parse a complete RTSP response, or return undefined while more bytes are needed. */
-export function parseResponse(data: Buffer, ended = false): RtspResponse | undefined {
+export function parseResponse(data: Buffer, ended = false): (RtspResponse & { consumed: number }) | undefined {
   const headerEnd = data.indexOf('\r\n\r\n');
   if (headerEnd < 0) return undefined;
   const lines = data.subarray(0, headerEnd).toString('utf8').split('\r\n');
@@ -181,5 +256,10 @@ export function parseResponse(data: Buffer, ended = false): RtspResponse | undef
   const length = Number(headers['content-length']?.[0] ?? 0);
   const body = data.subarray(headerEnd + 4);
   if (body.length < length && !ended) return undefined;
-  return { status: Number(statusMatch[1]), headers, sdp: length > 0 ? body.subarray(0, length).toString('utf8') : undefined };
+  return {
+    status: Number(statusMatch[1]),
+    headers,
+    sdp: length > 0 ? body.subarray(0, length).toString('utf8') : undefined,
+    consumed: headerEnd + 4 + Math.min(length, body.length),
+  };
 }
