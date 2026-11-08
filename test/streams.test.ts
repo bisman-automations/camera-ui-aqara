@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildCameraConfig, pickStreams, rolesFor, streamIndexForRole } from '../src/streams.js';
+import { buildCameraConfig, missingSources, pickStreams, rolesFor, streamIndexForRole } from '../src/streams.js';
 
 describe('streams', () => {
   it('hands roles out best first', () => {
@@ -31,5 +31,12 @@ describe('streams', () => {
     assert.deepEqual(pickStreams(['a', 'b', 'c', 'd', 'e']), ['a', 'd', 'e']);
     assert.deepEqual(pickStreams(['ch1', 'ch3']), ['ch1', 'ch3']);
     assert.deepEqual(pickStreams([]), []);
+  });
+
+  it('reports roles the camera could fill but has no source for', () => {
+    assert.deepEqual(missingSources(['high-resolution', 'low-resolution'], 3), [{ role: 'mid-resolution', name: 'medium', streamIndex: 1 }]);
+    assert.deepEqual(missingSources(['high-resolution', 'mid-resolution', 'low-resolution'], 3), []);
+    assert.deepEqual(missingSources(['high-resolution'], 2), [{ role: 'low-resolution', name: 'low', streamIndex: 1 }]);
+    assert.deepEqual(missingSources(['high-resolution', 'low-resolution'], 2), []);
   });
 });

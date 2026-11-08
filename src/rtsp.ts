@@ -76,6 +76,18 @@ export function stripCredentials(uri: string): string {
   }
 }
 
+/** A stream URL for a user to copy, with the real password swapped for a placeholder. */
+export function withPasswordPlaceholder(uri: string): string {
+  try {
+    const url = new URL(uri);
+    if (!url.password) return url.toString();
+    url.password = 'PASSWORD';
+    return url.toString().replace(':PASSWORD@', ':<password>@');
+  } catch {
+    return uri;
+  }
+}
+
 /** A stream URL that is safe to log. */
 export function redact(uri: string): string {
   try {

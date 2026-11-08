@@ -1,7 +1,7 @@
 import { OnvifClient } from './onvif.js';
 import { TalkRelay } from './relay.js';
-import { aqaraRtspUrl, DEFAULT_RTSP_PATHS, probeRtspPaths, redact, stripCredentials, withCredentials } from './rtsp.js';
-import { pickStreams, streamIndexForRole } from './streams.js';
+import { aqaraRtspUrl, DEFAULT_RTSP_PATHS, probeRtspPaths, redact, stripCredentials, withCredentials, withPasswordPlaceholder } from './rtsp.js';
+import { missingSources, pickStreams, streamIndexForRole } from './streams.js';
 
 import type { CameraDevice, DeviceStorage, JsonSchema, LoggerService, StreamingInterface } from '@camera.ui/sdk';
 import type { AqaraCameraStorage, AqaraInitialSettings, Logger } from './types.js';
@@ -32,6 +32,8 @@ export class AqaraCamera {
   private streams: string[] = [];
   private relay?: TalkRelay;
   private implemented = false;
+  /** The missing sources last reported, so a restart does not repeat them. */
+  private reportedMissing?: string;
   private queue: Promise<void> = Promise.resolve();
   private stopped = false;
 
@@ -124,6 +126,7 @@ export class AqaraCamera {
       return;
     }
     this.log.debug(`Streams: ${this.streams.map(redact).join(', ')}`);
+    this.reportMissingSources();
 
     if (this.storage.values.twoWayAudio !== false) await this.startRelay(host);
     if (!this.implemented) {
@@ -131,6 +134,27 @@ export class AqaraCamera {
       this.implemented = true;
     }
     await this.cameraDevice.connect();
+  }
+
+  /**
+   * Log which streams the camera serves that it has no source for, with the
+   * URL to add. camera.ui does not let plugins add sources to an existing
+   * camera, so the user adds them under Sources. Logged once per set of
+   * streams, not on every restart.
+   */
+  private reportMissingSources(): void {
+    const missing = missingSources(
+      this.cameraDevice.sources.map((source) => source.role),
+      this.streams.length,
+    );
+    const key = missing.map((source) => `${source.role}=${this.streams[source.streamIndex]}`).join('|');
+    if (key === this.reportedMissing) return;
+    this.reportedMissing = key;
+    for (const source of missing) {
+      this.log.log(
+        `This camera also serves a ${source.name} stream that has no source in camera.ui. To use it, add a source under Sources with role "${source.role}" and URL ${withPasswordPlaceholder(this.streams[source.streamIndex])} (with the camera's RTSP password).`,
+      );
+    }
   }
 
   /**

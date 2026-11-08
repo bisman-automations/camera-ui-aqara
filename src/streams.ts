@@ -73,3 +73,23 @@ export function buildCameraConfig(input: CameraConfigInput): CameraConfig {
     })),
   };
 }
+
+export interface MissingSource {
+  role: StreamingRole;
+  /** Suggested source name, as camera.ui shows roles. */
+  name: string;
+  /** Index into the camera's streams (best first). */
+  streamIndex: number;
+}
+
+/**
+ * Streaming roles the camera could fill but has no source for. camera.ui does
+ * not let plugins add sources to a camera, so these are reported for the user
+ * to add by hand.
+ */
+export function missingSources(presentRoles: (string | undefined)[], streamCount: number): MissingSource[] {
+  const present = new Set(presentRoles);
+  return rolesFor(streamCount)
+    .map((role, streamIndex) => ({ role, name: SOURCE_NAMES[role].toLowerCase(), streamIndex }))
+    .filter((source) => !present.has(source.role));
+}

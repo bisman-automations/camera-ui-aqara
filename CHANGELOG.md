@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.4] - 2026-11-08
+
+### Added
+
+- When a camera serves a stream that has no source in camera.ui, the plugin logs it once, with the role and the URL to add under **Sources** (the password left out). camera.ui doesn't let plugins add sources themselves.
+
 ## [3.3.3] - 2026-11-08
 
 ### Fixed
@@ -75,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two-way audio through Aqara's LAN talk protocol, offered to camera.ui as an RTSP talkback channel.
 - Cameras follow their new address when their IP changes.
 
+[3.3.4]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.3...v3.3.4
 [3.3.3]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.2...v3.3.3
 [3.3.2]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.1...v3.3.2
 [3.3.1]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.0...v3.3.1

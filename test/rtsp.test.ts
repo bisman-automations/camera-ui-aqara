@@ -5,7 +5,16 @@ import { createServer } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 
 import { authorization, parseChallenge } from '../src/digest.js';
-import { aqaraRtspUrl, describe as rtspDescribe, parseResponse, probeRtspPaths, redact, stripCredentials, withCredentials } from '../src/rtsp.js';
+import {
+  aqaraRtspUrl,
+  describe as rtspDescribe,
+  parseResponse,
+  probeRtspPaths,
+  redact,
+  stripCredentials,
+  withCredentials,
+  withPasswordPlaceholder,
+} from '../src/rtsp.js';
 
 import type { AddressInfo, Server } from 'node:net';
 
@@ -33,6 +42,7 @@ describe('stream URLs', () => {
     assert.equal(url, 'rtsp://user:p%40ss%20word@192.0.2.21:8554/ch2');
     assert.equal(redact(url), 'rtsp://user:***@192.0.2.21:8554/ch2');
     assert.equal(stripCredentials(url), 'rtsp://192.0.2.21:8554/ch2');
+    assert.equal(withPasswordPlaceholder(url), 'rtsp://user:<password>@192.0.2.21:8554/ch2');
     assert.equal(withCredentials('rtsp://old:x@192.0.2.21:554/main', 'new', 'y'), 'rtsp://new:y@192.0.2.21:554/main');
   });
 

@@ -106,6 +106,8 @@ Each camera's settings page in camera.ui has:
 
 Changes take effect right away.
 
+If a camera serves a stream it has no source for (a camera added over ONVIF and later switched to RTSP, for example), the plugin logs it once with the URL to add. camera.ui doesn't let plugins add sources to a camera, so add it yourself under **Sources** with the role and URL from the log, filling in the camera's RTSP password.
+
 The Aqara plugin's own settings also have **Maximum Call Duration**: how many seconds a talk call may last before the camera's speaker is cut off, 180 by default, for every camera and talk relay. It keeps a call that was left open from holding the speaker. 0 turns the limit off.
 
 ## Supported models
