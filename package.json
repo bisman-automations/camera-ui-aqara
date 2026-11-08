@@ -1,7 +1,7 @@
 {
   "displayName": "Aqara",
   "name": "camera-ui-aqara",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Adds Aqara cameras and doorbells to camera.ui over the local network: discovery, live streams on all three channels and two-way audio through Aqara's LAN talk protocol.",
   "author": "Donavan Becker (https://github.com/bisman-automations/camera-ui-aqara)",
   "type": "module",
@@ -26,11 +26,11 @@
   "devDependencies": {
     "@camera.ui/cli": "^0.1.2",
     "@camera.ui/sdk": "^1.4.7",
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@types/multicast-dns": "^7.2.4",
     "@types/node": "^24.19.2",
     "cross-env": "^10.1.0",
-    "eslint": "^9.39.2",
+    "eslint": "^10.14.0",
     "globals": "^17.14.0",
     "prettier": "^3.9.10",
     "rimraf": "^6.1.4",

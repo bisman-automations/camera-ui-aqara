@@ -144,7 +144,7 @@ function request(host: string, port: number, message: string, timeoutMs: number)
 
     socket.once('connect', () => socket.write(message));
     socket.on('error', (error) => finish(new Error(`Could not reach ${host}:${port}: ${error.message}`)));
-    socket.on('data', (chunk) => {
+    socket.on('data', (chunk: Buffer) => {
       data = Buffer.concat([data, chunk]);
       try {
         const parsed = parseResponse(data);

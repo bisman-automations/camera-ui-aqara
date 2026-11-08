@@ -17,6 +17,8 @@ export interface AqaraCameraStorage {
   password: string;
   /** RTSP stream paths the camera serves, best first (e.g. ch1, ch2, ch3). */
   rtspPaths?: string[];
+  /** The address rtspPaths were found at; checked again when the address changes. */
+  rtspCheckedHost?: string;
   /** ONVIF device service address, e.g. http://192.0.2.50:8000/onvif/device_service. */
   onvifAddress?: string;
   /** Stream URLs ONVIF last returned, highest resolution first, without credentials. */
@@ -29,10 +31,12 @@ export interface AqaraCameraStorage {
 
 /** Adoption-form values handed from onAdoptCamera to the camera's first start. */
 export type AqaraInitialSettings = Pick<AqaraCameraStorage, 'connection' | 'host' | 'username' | 'password' | 'twoWayAudio'> &
-  Partial<Pick<AqaraCameraStorage, 'rtspPaths' | 'onvifAddress' | 'onvifStreams' | 'deviceId' | 'model'>>;
+  Partial<Pick<AqaraCameraStorage, 'rtspPaths' | 'rtspCheckedHost' | 'onvifAddress' | 'onvifStreams' | 'deviceId' | 'model'>>;
 
 /** Plugin-level settings: the form for adding a camera by IP. */
 export interface AqaraPluginStorage {
   manualHost?: string;
   manualName?: string;
+  /** Talk relays, JSON-encoded (see talk-relay-config.ts). */
+  talkRelays?: string;
 }

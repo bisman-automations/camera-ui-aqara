@@ -7,6 +7,7 @@ import { isDoorbell, modelName } from './models.js';
 import { discoverOnvif, OnvifClient } from './onvif.js';
 import { probeRtspPaths, redact, stripCredentials } from './rtsp.js';
 import { buildCameraConfig } from './streams.js';
+import { TalkRelayManager } from './talk-relays.js';
 
 import type {
   CameraConfig,
@@ -35,9 +36,11 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
   private readonly pendingSettings = new Map<string, AqaraInitialSettings>();
   private readonly discoveryLogger: Logger;
   private rediscoverTimer?: NodeJS.Timeout;
+  private readonly talkRelays: TalkRelayManager;
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<AqaraPluginStorage>) {
     super(logger, api, storage);
+    this.talkRelays = new TalkRelayManager(storage, logger);
     this.discoveryLogger = { debug: (...args) => this.logger.debug(...args) };
     this.api.on(API_EVENT.FINISH_LAUNCHING, () => this.onFinishLaunching());
     this.api.on(API_EVENT.SHUTDOWN, () => this.onShutdown());
@@ -69,6 +72,7 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
         color: 'success',
         onClick: async (value) => this.addManualCamera(value),
       },
+      ...this.talkRelays.schema(),
     ];
   }
 
@@ -207,8 +211,14 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
         throw new Error(`${probe.message}.${hint}`);
       }
       initial.rtspPaths = probe.paths.slice(0, 3);
+      initial.rtspCheckedHost = host;
       streamCount = initial.rtspPaths.length;
       this.logger.log(`RTSP streams: ${initial.rtspPaths.join(', ')}`);
+    }
+
+    const relay = this.talkRelays.relays.find((item) => item.host === host);
+    if (relay) {
+      this.logger.log(`The talk relay "${relay.name}" also serves this camera. Remove it once the camera it was for is gone.`);
     }
 
     const nativeId = candidate?.deviceId ? `aqara-${candidate.deviceId}` : `aqara-${host}`;
@@ -278,6 +288,7 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
   }
 
   private onFinishLaunching(): void {
+    this.talkRelays.start().catch((error: unknown) => this.logger.error('Could not start the talk relays:', error));
     this.rediscoverTimer = setInterval(() => void this.rediscover(), REDISCOVER_INTERVAL_MS);
     void this.rediscover();
   }
@@ -286,7 +297,7 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
     clearInterval(this.rediscoverTimer);
     const cameras = [...this.cameras.values()];
     this.cameras.clear();
-    await Promise.allSettled(cameras.map((camera) => camera.destroy()));
+    await Promise.allSettled([...cameras.map((camera) => camera.destroy()), this.talkRelays.stop()]);
   }
 }
 

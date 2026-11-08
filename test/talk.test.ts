@@ -24,7 +24,7 @@ async function fakeCamera(answer: (packet: ControlPacket) => number | undefined)
   const server = createServer((socket) => {
     sockets.push(socket);
     const buffer = new ControlPacketBuffer();
-    socket.on('data', (data) => {
+    socket.on('data', (data: Buffer) => {
       buffer.feed(data);
       for (let packet = buffer.pop(); packet; packet = buffer.pop()) {
         received.push(packet);

@@ -61,6 +61,32 @@ Open the camera in the Aqara Home app, then its settings → **More Settings**:
 
 Open the Aqara plugin's settings, enter the camera's IP address (and a name if you like), and press **Add Camera**. The camera then shows up in the adoption list.
 
+## Two-way audio for cameras already in camera.ui
+
+If an Aqara camera is already set up in camera.ui through another plugin (the generic RTSP or ONVIF one, say), you can give it two-way audio without adding it again. It keeps its recordings, events, zones and HomeKit pairing. The Aqara plugin runs a **talk relay** for it: a local address that serves the camera's video with a talkback channel added.
+
+1. Open the Aqara plugin's settings and fill in the **Talk Relay** fields:
+   - **Name**: the camera's name. It becomes part of the relay's address.
+   - **Camera IP Address**, **RTSP Username** and **RTSP Password**: from the Aqara app.
+   - **Stream**: `ch1` (best quality) unless your model names it differently, such as `1080p`.
+   - **Port**: leave empty to use the next free port from 8560.
+2. Press **Add Talk Relay**. The plugin checks that the camera answers with these credentials, then shows the relay's address, for example `rtsp://127.0.0.1:8560/front-door`.
+3. Open the existing camera's settings in camera.ui and set its **High** source URL to that address.
+
+Talk now works for that camera like it does for cameras the Aqara plugin added. Only the source pointed at the relay carries talk, so use it for the High source. The address works only on the machine camera.ui runs on. To undo it, point the High source back at the camera's own stream, then press **Remove** next to the relay.
+
+Unlike cameras added through the Aqara plugin, a relay doesn't follow the camera to a new IP address. Give the camera a fixed address in your router.
+
+## Moving a camera to the Aqara plugin
+
+camera.ui doesn't let a camera move from one plugin to another, so moving one means adding it again:
+
+1. Note the existing camera's settings you want to keep: room, zones, detection, recording and notifications.
+2. Add the camera through the Aqara plugin (see **Setup**), then copy those settings over.
+3. Remove the old camera, and any talk relay you made for it, once the new one works.
+
+The old camera's recordings and events stay with the old camera until you remove it, and apps such as HomeKit see the new camera as a new device. If keeping those matters more, use a talk relay instead.
+
 ## Camera settings
 
 Each camera's settings page in camera.ui has:
@@ -71,7 +97,7 @@ Each camera's settings page in camera.ui has:
 | IP Address | Updated automatically when the camera is found at a new address. |
 | Username, Password | The RTSP or ONVIF credentials from the Aqara app. |
 | ONVIF Address | The camera's ONVIF device service (ONVIF only). |
-| RTSP Streams | The stream paths on port 8554, best first (RTSP only). Usually `ch1`, `ch2`, `ch3`; some models use names like `1080p` and `360p`. |
+| RTSP Streams | The stream paths on port 8554, best first (RTSP only). Usually `ch1`, `ch2`, `ch3`; some models use names like `1080p` and `360p`. They're found by asking the camera when it's added, when you switch it to RTSP, and when its address changes. |
 | Two-Way Audio | Turn off to free the speaker for other apps, or to send video straight from the camera without the relay. |
 
 Changes take effect right away.

@@ -9,11 +9,13 @@ the bisman-automations shared rules apply as adapted below.
 - `src/index.ts`: plugin entry. Discovery (mDNS + WS-Discovery), adoption form, adoption checks, adding by IP, following IP changes.
 - `src/camera.ts`: one camera. Storage schema, stream resolution (RTSP paths or ONVIF), relay with RTSP backchannel, `streamUrl()`.
 - `src/talkback.ts`: talkback bridge. Transcoder → ADTS framing → paced frames → talk session, idle stop and cooldown.
+- `src/relay.ts`: the RTSP relay with talkback, shared by adopted cameras and talk relays.
+- `src/talk-relays.ts`, `src/talk-relay-config.ts`: talk relays for cameras another plugin manages (settings form, storage, lifecycle).
 - `src/talk.ts`, `src/protocol.ts`: Aqara LAN talk protocol (TCP 54324 control, UDP 54323 RTP AAC), ported from absent42/Aqara-Camera-2-Way-Audio (MIT, see LICENSE.md).
 - `src/onvif.ts`, `src/mdns.ts`, `src/discovery.ts`, `src/rtsp.ts`, `src/digest.ts`, `src/streams.ts`, `src/models.ts`: helpers, each covered by `test/`.
 - `contract.ts`, `cameraui.config.ts`: read by `cui bundle`.
 
-`@camera.ui/sdk` and `node-av` come from the camera.ui host at runtime (the CLI marks them external). Keep modules that tests import free of `@seydx/rtsp`, which loads `node-av`. Only `src/camera.ts` imports it.
+`@camera.ui/sdk` and `node-av` come from the camera.ui host at runtime (the CLI marks them external). Keep modules that tests import free of `@seydx/rtsp`, which loads `node-av`. Only `src/relay.ts` imports it.
 
 ## Releases
 

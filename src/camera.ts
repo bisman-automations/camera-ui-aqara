@@ -1,9 +1,7 @@
-import { AvSource, BackchannelTranscoder, Relay, RtspServerSink } from '@seydx/rtsp';
-
 import { OnvifClient } from './onvif.js';
-import { aqaraRtspUrl, DEFAULT_RTSP_PATHS, redact, stripCredentials, withCredentials } from './rtsp.js';
+import { TalkRelay } from './relay.js';
+import { aqaraRtspUrl, DEFAULT_RTSP_PATHS, probeRtspPaths, redact, stripCredentials, withCredentials } from './rtsp.js';
 import { streamIndexForRole } from './streams.js';
-import { AqaraTalkback, TALKBACK_ADVERTISE, TALKBACK_TARGET } from './talkback.js';
 
 import type { CameraDevice, DeviceStorage, JsonSchema, LoggerService, StreamingInterface } from '@camera.ui/sdk';
 import type { AqaraCameraStorage, AqaraInitialSettings, Logger } from './types.js';
@@ -32,9 +30,7 @@ export class AqaraCamera {
 
   /** Stream URLs with credentials, best first. */
   private streams: string[] = [];
-  private relay?: Relay;
-  private server?: RtspServerSink;
-  private talkback?: AqaraTalkback;
+  private relay?: TalkRelay;
   private implemented = false;
   private queue: Promise<void> = Promise.resolve();
   private stopped = false;
@@ -96,7 +92,7 @@ export class AqaraCamera {
     if (this.streams.length === 0) throw new Error('The camera has no stream yet. Check its connection settings.');
     const role = this.cameraDevice.sources.find((source) => source._id === sourceId)?.role;
     const index = streamIndexForRole(role, this.streams.length) ?? 0;
-    if (index === 0 && this.server) return `${this.server.url}#timeout=30`;
+    if (index === 0 && this.relay) return `${this.relay.url}#timeout=30`;
     return this.streams[index];
   }
 
@@ -114,8 +110,12 @@ export class AqaraCamera {
     }
 
     try {
-      const paths = this.storage.values.rtspPaths?.length ? this.storage.values.rtspPaths : DEFAULT_RTSP_PATHS;
-      this.streams = connection === 'onvif' ? await this.resolveOnvifStreams() : paths.slice(0, 3).map((path) => aqaraRtspUrl(host, username, password, path));
+      if (connection === 'onvif') {
+        this.streams = await this.resolveOnvifStreams();
+      } else {
+        const paths = await this.resolveRtspPaths();
+        this.streams = paths.slice(0, 3).map((path) => aqaraRtspUrl(host, username, password, path));
+      }
     } catch (error) {
       this.log.error(`Could not get the camera's streams: ${(error as Error).message}`);
       return;
@@ -128,6 +128,28 @@ export class AqaraCamera {
       this.implemented = true;
     }
     await this.cameraDevice.connect();
+  }
+
+  /**
+   * The RTSP stream paths to use. They are found by asking the camera the
+   * first time a camera runs over RTSP at an address, for example after
+   * switching from ONVIF, and kept after that, so paths edited by hand stay.
+   */
+  private async resolveRtspPaths(): Promise<string[]> {
+    const { host, username, password, rtspPaths, rtspCheckedHost } = this.storage.values;
+    if (rtspPaths?.length && rtspCheckedHost === host) return rtspPaths;
+
+    const probe = await probeRtspPaths(host, username, password);
+    if ('error' in probe) {
+      const fallback = rtspPaths?.length ? rtspPaths : DEFAULT_RTSP_PATHS;
+      this.log.warn(`Could not check which RTSP streams the camera serves (${probe.message}), using ${fallback.join(', ')}`);
+      return fallback;
+    }
+    this.storage.values.rtspPaths = probe.paths.slice(0, 3);
+    this.storage.values.rtspCheckedHost = host;
+    await this.storage.save();
+    this.log.log(`RTSP streams: ${this.storage.values.rtspPaths.join(', ')}`);
+    return this.storage.values.rtspPaths;
   }
 
   /**
@@ -154,60 +176,18 @@ export class AqaraCamera {
   }
 
   private async startRelay(host: string): Promise<void> {
-    const talkback = new AqaraTalkback({
-      host,
-      logger: this.relayLogger,
-      createTranscoder: (output, onError) => {
-        const transcoder = new BackchannelTranscoder({
-          from: { ...TALKBACK_ADVERTISE },
-          to: { ...TALKBACK_TARGET },
-          output,
-          onError,
-          logger: this.relayLogger,
-        });
-        return {
-          start: async () => transcoder.start(),
-          push: (rtp) => transcoder.push(rtp),
-          close: async () => transcoder.close(),
-        };
-      },
-    });
-
-    const relay = new Relay({
-      source: new AvSource(this.streams[0], { transport: 'tcp', reconnect: true, logger: this.relayLogger }),
-      idleTimeout: 30_000,
-      stallTimeout: 10_000,
-      logger: this.relayLogger,
-    });
-    relay.on('stop', () => void talkback.stop());
-
     try {
-      const server = await new RtspServerSink(relay, {
-        path: 'live',
-        backchannel: { advertise: { ...TALKBACK_ADVERTISE } },
-        sdpTimeout: 30_000,
-        logger: this.relayLogger,
-      }).listen();
-      server.on('backchannel', (rtp) => talkback.push(rtp));
-      server.on('backchannel:stop', () => void talkback.stop());
-      this.relay = relay;
-      this.server = server;
-      this.talkback = talkback;
+      this.relay = await TalkRelay.start({ source: this.streams[0], cameraHost: host, path: 'live', logger: this.relayLogger });
       this.log.debug('Two-way audio relay ready');
     } catch (error) {
-      await relay.stop().catch(() => undefined);
       this.log.error('Could not start the two-way audio relay, video goes direct without talkback:', error);
     }
   }
 
   private async stopStreaming(): Promise<void> {
-    const { relay, server, talkback } = this;
+    const relay = this.relay;
     this.relay = undefined;
-    this.server = undefined;
-    this.talkback = undefined;
-    await talkback?.stop();
-    await server?.shutdown().catch(() => undefined);
-    await relay?.stop().catch(() => undefined);
+    await relay?.stop();
   }
 
   private async restart(): Promise<void> {
@@ -293,10 +273,18 @@ export class AqaraCamera {
         title: 'RTSP Streams',
         description: 'Stream paths on port 8554, best first. Found when the camera was added.',
         items: { type: 'string', title: 'Path', description: '' },
-        defaultValue: DEFAULT_RTSP_PATHS,
         store: true,
         condition: { key: 'connection', value: 'rtsp' },
         onSet,
+      },
+      {
+        type: 'string',
+        key: 'rtspCheckedHost',
+        title: 'RTSP Streams Checked At',
+        description: 'The address the RTSP streams were last checked at.',
+        store: true,
+        readonly: true,
+        hidden: true,
       },
       {
         type: 'string',

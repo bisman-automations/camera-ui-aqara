@@ -122,7 +122,7 @@ export class AqaraTalkClient extends EventEmitter<{ close: [] }> {
       socket.once('connect', () => {
         clearTimeout(timer);
         socket.setNoDelay(true);
-        socket.on('data', (data) => this.onData(data));
+        socket.on('data', (data: Buffer) => this.onData(data));
         socket.on('close', () => this.onSocketClosed());
         socket.on('error', (error) => this.logger?.debug?.(`Talk control socket error: ${error.message}`));
         resolve(socket);
