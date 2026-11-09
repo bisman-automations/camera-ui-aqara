@@ -1,10 +1,16 @@
 import { OnvifClient } from './onvif.js';
 import { TalkRelay } from './relay.js';
 import { aqaraRtspUrl, DEFAULT_RTSP_PATHS, probeRtspPaths, redact, stripCredentials, withCredentials, withPasswordPlaceholder } from './rtsp.js';
-import { missingSources, pickStreams, streamIndexForRole } from './streams.js';
+import { missingSources, pickStreams, sourceForMissing, streamIndexForRole } from './streams.js';
 
 import type { CameraDevice, DeviceStorage, JsonSchema, LoggerService, StreamingInterface } from '@camera.ui/sdk';
+import type { MissingSource, PluginServedSource } from './streams.js';
 import type { AqaraCameraStorage, AqaraInitialSettings, Logger } from './types.js';
+
+/** Source editing on CameraDevice, from camera.ui versions that include it (cameraui/sdk#56). */
+interface SourceEditing {
+  addSource(source: PluginServedSource): Promise<unknown>;
+}
 
 class Implementation implements StreamingInterface {
   constructor(private readonly camera: AqaraCamera) {}
@@ -126,7 +132,7 @@ export class AqaraCamera {
       return;
     }
     this.log.debug(`Streams: ${this.streams.map(redact).join(', ')}`);
-    this.reportMissingSources();
+    await this.handleMissingSources();
 
     if (this.storage.values.twoWayAudio !== false) await this.startRelay(host);
     if (!this.implemented) {
@@ -137,24 +143,45 @@ export class AqaraCamera {
   }
 
   /**
-   * Log which streams the camera serves that it has no source for, with the
-   * URL to add. camera.ui does not let plugins add sources to an existing
-   * camera, so the user adds them under Sources. Logged once per set of
-   * streams, not on every restart.
+   * Deal with streams the camera serves that it has no source for. With Add
+   * Missing Sources on, and on camera.ui versions that let plugins add
+   * sources, they are added as plugin-served sources. Otherwise they are
+   * logged once with the URL for the user to add by hand.
    */
-  private reportMissingSources(): void {
+  private async handleMissingSources(): Promise<void> {
     const missing = missingSources(
       this.cameraDevice.sources.map((source) => source.role),
       this.streams.length,
     );
+    if (missing.length === 0) return;
+
+    const addSource = (this.cameraDevice as Partial<SourceEditing>).addSource;
+    if (this.storage.values.addMissingSources && typeof addSource === 'function') {
+      for (const source of missing) {
+        try {
+          await addSource.call(this.cameraDevice, sourceForMissing(source));
+          this.log.log(`Added a ${source.name} source for the camera's ${source.name} stream`);
+        } catch (error) {
+          this.log.warn(`Could not add a ${source.name} source: ${(error as Error).message}`);
+          this.reportMissingSource(source);
+        }
+      }
+      return;
+    }
+
     const key = missing.map((source) => `${source.role}=${this.streams[source.streamIndex]}`).join('|');
     if (key === this.reportedMissing) return;
     this.reportedMissing = key;
-    for (const source of missing) {
-      this.log.log(
-        `This camera also serves a ${source.name} stream that has no source in camera.ui. To use it, add a source under Sources with role "${source.role}" and URL ${withPasswordPlaceholder(this.streams[source.streamIndex])} (with the camera's RTSP password).`,
-      );
+    if (this.storage.values.addMissingSources) {
+      this.log.log('Add Missing Sources is on, but this camera.ui version does not let plugins add sources yet.');
     }
+    for (const source of missing) this.reportMissingSource(source);
+  }
+
+  private reportMissingSource(source: MissingSource): void {
+    this.log.log(
+      `This camera also serves a ${source.name} stream that has no source in camera.ui. To use it, add a source under Sources with role "${source.role}" and URL ${withPasswordPlaceholder(this.streams[source.streamIndex])} (with the camera's RTSP password).`,
+    );
   }
 
   /**
@@ -302,6 +329,16 @@ export class AqaraCamera {
         items: { type: 'string', title: 'Path', description: '' },
         store: true,
         condition: { key: 'connection', value: 'rtsp' },
+        onSet,
+      },
+      {
+        type: 'boolean',
+        key: 'addMissingSources',
+        title: 'Add Missing Sources',
+        description:
+          'Add a source in camera.ui for each stream the camera serves that has none, for example the medium stream of a camera first added over ONVIF. Needs a camera.ui version that lets plugins add sources; older versions log the URL to add by hand instead.',
+        defaultValue: false,
+        store: true,
         onSet,
       },
       {

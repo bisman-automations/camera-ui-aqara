@@ -102,11 +102,12 @@ Each camera's settings page in camera.ui has:
 | Username, Password | The RTSP or ONVIF credentials from the Aqara app. |
 | ONVIF Address | The camera's ONVIF device service (ONVIF only). |
 | RTSP Streams | The stream paths on port 8554, best first (RTSP only). Usually `ch1`, `ch2`, `ch3` (the G5 Pro adds `ch4`); some models use names like `1080p` and `360p`. With four streams, High, Medium and Low get the best, the second smallest and the smallest. They're found by asking the camera when it's added, when you switch it to RTSP, and when its address changes. |
+| Add Missing Sources | Add a source for each stream the camera serves that has none, for example the medium stream of a camera first added over ONVIF. Off by default. Needs a camera.ui version that lets plugins add sources. |
 | Two-Way Audio | Turn off to free the speaker for other apps, or to send video straight from the camera without the relay. |
 
 Changes take effect right away.
 
-If a camera serves a stream it has no source for (a camera added over ONVIF and later switched to RTSP, for example), the plugin logs it once with the URL to add. camera.ui doesn't let plugins add sources to a camera, so add it yourself under **Sources** with the role and URL from the log, filling in the camera's RTSP password.
+If a camera serves a stream it has no source for (a camera added over ONVIF and later switched to RTSP, for example), turn on **Add Missing Sources** and the plugin adds it. This needs a camera.ui version that lets plugins add sources to a camera ([cameraui/sdk#56](https://github.com/cameraui/sdk/issues/56)). Until then, and with the setting off, the plugin logs the missing stream once with the URL to add yourself under **Sources**, filling in the camera's RTSP password.
 
 The Aqara plugin's own settings also have **Maximum Call Duration**: how many seconds a talk call may last before the camera's speaker is cut off, 180 by default, for every camera and talk relay. It keeps a call that was left open from holding the speaker. 0 turns the limit off.
 

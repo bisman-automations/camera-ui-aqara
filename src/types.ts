@@ -24,6 +24,8 @@ export interface AqaraCameraStorage {
   /** Stream URLs ONVIF last returned, highest resolution first, without credentials. */
   onvifStreams?: string[];
   twoWayAudio: boolean;
+  /** Add camera.ui sources for streams the camera serves that have none, where camera.ui allows it. */
+  addMissingSources?: boolean;
   /** Aqara device id from mDNS (lumi1.xxxx), used to follow the camera when its IP changes. */
   deviceId?: string;
   model?: string;

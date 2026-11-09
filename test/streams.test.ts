@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildCameraConfig, missingSources, pickStreams, rolesFor, streamIndexForRole } from '../src/streams.js';
+import { buildCameraConfig, missingSources, pickStreams, rolesFor, sourceForMissing, streamIndexForRole } from '../src/streams.js';
 
 describe('streams', () => {
   it('hands roles out best first', () => {
@@ -38,5 +38,11 @@ describe('streams', () => {
     assert.deepEqual(missingSources(['high-resolution', 'mid-resolution', 'low-resolution'], 3), []);
     assert.deepEqual(missingSources(['high-resolution'], 2), [{ role: 'low-resolution', name: 'low', streamIndex: 1 }]);
     assert.deepEqual(missingSources(['high-resolution', 'low-resolution'], 2), []);
+  });
+
+  it('adds a missing source as a plugin-served source without URLs', () => {
+    const [missing] = missingSources(['high-resolution', 'low-resolution'], 3);
+    assert.deepEqual(sourceForMissing(missing), { name: 'medium', role: 'mid-resolution', useForSnapshot: false, hotMode: false, preload: false });
+    assert.equal('urls' in sourceForMissing(missing), false);
   });
 });

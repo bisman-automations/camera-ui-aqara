@@ -93,3 +93,17 @@ export function missingSources(presentRoles: (string | undefined)[], streamCount
     .map((role, streamIndex) => ({ role, name: SOURCE_NAMES[role].toLowerCase(), streamIndex }))
     .filter((source) => !present.has(source.role));
 }
+
+/** A source for camera.ui to add for a missing role, served by the plugin through streamUrl(). */
+export interface PluginServedSource {
+  name: string;
+  role: StreamingRole;
+  useForSnapshot: boolean;
+  hotMode: boolean;
+  preload: boolean;
+}
+
+/** The source to add for a missing role: plugin-served (no URLs), so it always follows the camera's current address and login. */
+export function sourceForMissing(missing: MissingSource): PluginServedSource {
+  return { name: missing.name, role: missing.role, useForSnapshot: false, hotMode: false, preload: false };
+}
