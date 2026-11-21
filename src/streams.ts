@@ -107,3 +107,10 @@ export interface PluginServedSource {
 export function sourceForMissing(missing: MissingSource): PluginServedSource {
   return { name: missing.name, role: missing.role, useForSnapshot: false, hotMode: false, preload: false };
 }
+
+/** True when two stream lists hold the same URLs in the same order. */
+export function sameStreams(a: readonly string[] | undefined, b: readonly string[] | undefined): boolean {
+  const left = a ?? [];
+  const right = b ?? [];
+  return left.length === right.length && left.every((uri, index) => uri === right[index]);
+}

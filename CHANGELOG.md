@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.2] - 2026-11-21
+
+### Fixed
+
+- **Talkback could hold the camera's speaker after it was stopped.** When talk was stopped while the plugin was still connecting to the camera, the voice session opened anyway and was never closed, so the camera kept the speaker busy and the Aqara app could not talk to it. The session is now closed straight away. Stopping talk this way also no longer makes the plugin wait 15 seconds before the next press works, since the camera never refused anything.
+- An ONVIF address typed in the camera settings is shown with its password hidden when ONVIF fails.
+- Talk relays no longer start again when they are found at a new address while the plugin is shutting down.
+- When camera.ui adds a camera again, the old connection to it is stopped first instead of being left running.
+
+### Changed
+
+- Less work for each piece of talkback audio: fewer timers and fewer copies of the audio data while talking.
+- The camera's ONVIF streams are only saved when they changed, not every time the camera starts, and the talk relay Camera list in the plugin settings is only refreshed when the cameras in it changed.
+- **Updated libraries.** The RTSP library is updated to 2.1.11 (no change to how it works for this plugin). The build tools are updated too (camera.ui CLI 0.1.11 and SDK 1.4.12, typescript-eslint 8.73.0).
+
 ## [3.4.1] - 2026-11-21
 
 ### Changed
@@ -93,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two-way audio through Aqara's LAN talk protocol, offered to camera.ui as an RTSP talkback channel.
 - Cameras follow their new address when their IP changes.
 
+[3.4.2]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.4.1...v3.4.2
 [3.4.1]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.4...v3.4.0
 [3.3.4]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.3...v3.3.4

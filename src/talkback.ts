@@ -75,6 +75,8 @@ export class AqaraTalkback {
 
   private transcoder?: Transcoder;
   private transcoderReady?: Promise<void>;
+  /** Set once the current transcoder has started, so packets go straight to it. */
+  private transcoderStarted = false;
   private client?: ReturnType<TalkClientFactory>;
   private opening?: Promise<void>;
   private readonly framer = new AdtsFramer();
@@ -82,6 +84,7 @@ export class AqaraTalkback {
   private pacer?: NodeJS.Timeout;
   private nextSendAt = 0;
   private idleTimer?: NodeJS.Timeout;
+  private drainTimer?: NodeJS.Timeout;
   private blockedUntil = 0;
   private callTimer?: NodeJS.Timeout;
   /** Set when a call hit the maximum duration; cleared once incoming audio pauses. */
@@ -116,8 +119,7 @@ export class AqaraTalkback {
   public push(rtp: Buffer): void {
     if (this.cutOff) {
       // Keep muting until the talker stops sending; a new press then starts a new call.
-      clearTimeout(this.cutOffTimer);
-      this.cutOffTimer = setTimeout(() => (this.cutOff = false), this.idleTimeoutMs);
+      this.armCutOffTimer();
       return;
     }
     if (Date.now() < this.blockedUntil || this.stopping) return;
@@ -134,14 +136,24 @@ export class AqaraTalkback {
         },
       );
       this.transcoder = transcoder;
-      this.transcoderReady = transcoder.start().catch((error: unknown) => {
-        this.logger?.error?.('Talkback transcoder did not start:', error);
-        this.block();
-        void this.stop();
-        throw error;
-      });
+      this.transcoderStarted = false;
+      this.transcoderReady = transcoder.start().then(
+        () => {
+          if (this.transcoder === transcoder) this.transcoderStarted = true;
+        },
+        (error: unknown) => {
+          this.logger?.error?.('Talkback transcoder did not start:', error);
+          this.block();
+          void this.stop();
+          throw error;
+        },
+      );
     }
     const transcoder = this.transcoder;
+    if (this.transcoderStarted) {
+      transcoder.push(rtp);
+      return;
+    }
     this.transcoderReady?.then(() => transcoder.push(rtp)).catch(() => undefined);
   }
 
@@ -176,15 +188,27 @@ export class AqaraTalkback {
       });
       try {
         await client.connect();
-        this.logger?.debug?.('Voice session open');
-        this.armCallTimer();
-        if (this.client === client) this.startPacer();
       } catch (error) {
+        if (this.client !== client) {
+          // We stopped this session ourselves while it opened; the camera did not refuse.
+          this.logger?.debug?.(`Voice session stopped while opening: ${(error as Error).message}`);
+          return;
+        }
         this.logger?.warn?.((error as Error).message);
-        if (this.client === client) this.client = undefined;
+        this.client = undefined;
         this.block();
         await this.stop();
+        return;
       }
+      if (this.client !== client) {
+        // stop() ran while the session opened: close it so it cannot hold the camera's speaker.
+        this.logger?.debug?.('Voice session opened after talkback stopped, closing it');
+        await client.disconnect();
+        return;
+      }
+      this.logger?.debug?.('Voice session open');
+      this.armCallTimer();
+      this.startPacer();
     })().finally(() => (this.opening = undefined));
     return this.opening;
   }
@@ -211,19 +235,28 @@ export class AqaraTalkback {
     this.pacer = undefined;
   }
 
+  /** Called for every packet, so one timer is re-armed instead of making a new one. */
   private armIdleTimer(): void {
-    clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => void this.finish(), this.idleTimeoutMs);
+    if (this.idleTimer) this.idleTimer.refresh();
+    else this.idleTimer = setTimeout(() => this.finish(), this.idleTimeoutMs);
+  }
+
+  private armCutOffTimer(): void {
+    if (this.cutOffTimer) this.cutOffTimer.refresh();
+    else this.cutOffTimer = setTimeout(() => (this.cutOff = false), this.idleTimeoutMs);
   }
 
   /** Talk went quiet: let queued frames play out, then end the session. */
-  private async finish(): Promise<void> {
+  private finish(): void {
     const quietSince = this.lastPacketAt;
     const drainMs = this.queue.length * FRAME_DURATION_MS + 250;
-    await new Promise((resolve) => setTimeout(resolve, drainMs));
-    // Talk resumed while the queue drained: the new burst keeps the session.
-    if (this.lastPacketAt !== quietSince) return;
-    await this.stop();
+    clearTimeout(this.drainTimer);
+    this.drainTimer = setTimeout(() => {
+      this.drainTimer = undefined;
+      // Talk resumed while the queue drained: the new burst keeps the session.
+      if (this.lastPacketAt !== quietSince) return;
+      void this.stop();
+    }, drainMs);
   }
 
   private armCallTimer(): void {
@@ -233,8 +266,7 @@ export class AqaraTalkback {
     this.callTimer = setTimeout(() => {
       this.logger?.log?.(`Talkback reached the maximum call duration (${Math.round(limit / 1000)} s), ending the call`);
       this.cutOff = true;
-      clearTimeout(this.cutOffTimer);
-      this.cutOffTimer = setTimeout(() => (this.cutOff = false), this.idleTimeoutMs);
+      this.armCutOffTimer();
       void this.stop();
     }, limit);
   }
@@ -248,6 +280,8 @@ export class AqaraTalkback {
     this.callTimer = undefined;
     clearTimeout(this.idleTimer);
     this.idleTimer = undefined;
+    clearTimeout(this.drainTimer);
+    this.drainTimer = undefined;
     this.stopPacer();
     this.queue = [];
     this.framer.clear();
@@ -256,6 +290,7 @@ export class AqaraTalkback {
     const client = this.client;
     this.transcoder = undefined;
     this.transcoderReady = undefined;
+    this.transcoderStarted = false;
     this.client = undefined;
 
     await Promise.allSettled([transcoder?.close(), client?.disconnect()]);

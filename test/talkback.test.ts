@@ -24,12 +24,19 @@ class FakeClient extends EventEmitter {
   public frames: Buffer[] = [];
   public sentAt: number[] = [];
   public disconnects = 0;
-  constructor(private readonly refuse = false) {
+  constructor(
+    private readonly refuse = false,
+    private readonly connectMs = 10,
+    /** Like AqaraTalkClient: connect() rejects when disconnect() ran while it connected. */
+    private readonly stopAware = false,
+  ) {
     super();
   }
   public async connect(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    const disconnectsBefore = this.disconnects;
+    await new Promise((resolve) => setTimeout(resolve, this.connectMs));
     if (this.refuse) throw new Error('The camera refused to start talking (ack 1).');
+    if (this.stopAware && this.disconnects !== disconnectsBefore) throw new Error('The talk session was stopped while connecting');
     this.connected = true;
   }
   public sendFrame(frame: Buffer): void {
@@ -195,6 +202,94 @@ describe('AqaraTalkback', () => {
     await wait(60);
     assert.equal(clients.length, 2);
     await talkback.stop();
+  });
+
+  it('closes a session that finishes opening after stop()', async () => {
+    const clients: FakeClient[] = [];
+    const logs: string[] = [];
+    const talkback = new AqaraTalkback({
+      host: '192.0.2.10',
+      createTranscoder: fakeTranscoder().factory,
+      createClient: (() => {
+        const client = new FakeClient(false, 60);
+        clients.push(client);
+        return client;
+      }) as unknown as TalkClientFactory,
+      idleTimeoutMs: 1000,
+      maxCallMs: () => 30,
+      logger: { log: (...args: unknown[]) => logs.push(args.join(' ')) },
+    });
+    talkback.push(Buffer.from([1]));
+    await wait(10);
+    await talkback.stop();
+    await wait(150);
+    assert.equal(clients.length, 1);
+    assert.equal(clients[0].connected, false, 'the late session was closed');
+    assert.deepEqual(clients[0].frames, []);
+    assert.ok(!logs.some((message) => message.includes('maximum call duration')), logs.join('\n'));
+    assert.equal(talkback.active, false);
+  });
+
+  it('does not wait out the cooldown after stopping a session that was opening', async () => {
+    const clients: FakeClient[] = [];
+    const logs: string[] = [];
+    const talkback = new AqaraTalkback({
+      host: '192.0.2.10',
+      createTranscoder: fakeTranscoder().factory,
+      createClient: (() => {
+        const client = new FakeClient(false, 60, true);
+        clients.push(client);
+        return client;
+      }) as unknown as TalkClientFactory,
+      idleTimeoutMs: 1000,
+      cooldownMs: 10_000,
+      maxCallMs: () => 30,
+      logger: { log: (...args: unknown[]) => logs.push(args.join(' ')) },
+    });
+    talkback.push(Buffer.from([1]));
+    await wait(10);
+    await talkback.stop();
+    await wait(100);
+    assert.equal(clients[0].disconnects, 1);
+    assert.ok(!logs.some((message) => message.includes('maximum call duration')), logs.join('\n'));
+
+    talkback.push(Buffer.from([2]));
+    await wait(100);
+    assert.equal(clients.length, 2, 'the next burst is not blocked');
+    assert.deepEqual(
+      clients[1].frames.map((frame) => frame[7]),
+      [2],
+    );
+    await talkback.stop();
+  });
+
+  it('ends the session shortly after the last of many packets', async () => {
+    const clients: FakeClient[] = [];
+    const talkback = new AqaraTalkback({
+      host: '192.0.2.10',
+      createTranscoder: fakeTranscoder().factory,
+      createClient: (() => {
+        const client = new FakeClient();
+        clients.push(client);
+        return client;
+      }) as unknown as TalkClientFactory,
+      idleTimeoutMs: 100,
+      maxQueuedFrames: 1,
+    });
+    let endedAt = 0;
+    for (let i = 0; i < 100; i++) {
+      talkback.push(Buffer.from([i & 0xff]));
+      await wait(2);
+    }
+    const lastAt = Date.now();
+    assert.equal(clients.length, 1);
+    clients[0].once('close', () => (endedAt = Date.now()));
+    while (!endedAt && Date.now() - lastAt < 2000) await wait(5);
+    const after = endedAt - lastAt;
+    // The idle timeout, then the drain (one queued frame at most, plus 250 ms).
+    assert.ok(after >= 90 && after <= 100 + 64 + 250 + 150, `ended ${after} ms after the last packet`);
+    assert.equal(clients[0].disconnects, 1);
+    assert.equal(talkback.active, false);
   });
 
   it('reads the call limit setting', () => {

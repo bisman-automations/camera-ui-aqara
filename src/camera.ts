@@ -1,7 +1,7 @@
 import { OnvifClient } from './onvif.js';
 import { TalkRelay } from './relay.js';
 import { aqaraRtspUrl, DEFAULT_RTSP_PATHS, probeRtspPaths, redact, stripCredentials, withCredentials, withPasswordPlaceholder } from './rtsp.js';
-import { missingSources, pickStreams, sourceForMissing, streamIndexForRole } from './streams.js';
+import { missingSources, pickStreams, sameStreams, sourceForMissing, streamIndexForRole } from './streams.js';
 
 import type { CameraDevice, DeviceStorage, JsonSchema, LoggerService, StreamingInterface } from '@camera.ui/sdk';
 import type { MissingSource, PluginServedSource } from './streams.js';
@@ -218,13 +218,16 @@ export class AqaraCamera {
       const client = new OnvifClient(address, username, password, { logger: this.relayLogger });
       const streams = pickStreams(await client.getStreams()).map((stream) => stream.uri);
       if (streams.length === 0) throw new Error('the camera reported no video streams');
-      this.storage.values.onvifStreams = streams.map(stripCredentials);
-      await this.storage.save();
+      const stripped = streams.map(stripCredentials);
+      if (!sameStreams(this.storage.values.onvifStreams, stripped)) {
+        this.storage.values.onvifStreams = stripped;
+        await this.storage.save();
+      }
       return streams.map((uri) => withCredentials(uri, username, password));
     } catch (error) {
       const saved = this.storage.values.onvifStreams ?? [];
-      if (saved.length === 0) throw new Error(`ONVIF at ${address} failed: ${(error as Error).message}`, { cause: error });
-      this.log.warn(`ONVIF at ${address} failed (${(error as Error).message}), using the streams it reported last time`);
+      if (saved.length === 0) throw new Error(`ONVIF at ${redact(address)} failed: ${(error as Error).message}`, { cause: error });
+      this.log.warn(`ONVIF at ${redact(address)} failed (${(error as Error).message}), using the streams it reported last time`);
       return saved.map((uri) => withCredentials(uri, username, password));
     }
   }

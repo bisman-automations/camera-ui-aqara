@@ -47,6 +47,11 @@ export function cameraChoices(cameras: RelayCameraChoice[], relays: TalkRelayCon
   return { values, labels };
 }
 
+/** A key that is equal for two Camera lists only when they show the same entries, in order, with the same labels. */
+export function choicesKey(choices: { values: string[]; labels: Record<string, string> }): string {
+  return JSON.stringify(choices.values.map((value) => [value, choices.labels[value] ?? '']));
+}
+
 export const FIRST_RELAY_PORT = 8560;
 
 /** "Front Door Cam" becomes "front-door-cam". */

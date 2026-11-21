@@ -73,16 +73,25 @@ export class AqaraTalkClient extends EventEmitter<{ close: [] }> {
     if (this.open) return;
     if (this.closed) throw new Error('This talk session has already ended');
 
-    this.socket = await this.openSocket();
+    const socket = await this.openSocket();
+    if (this.closed) {
+      // disconnect() ran while the connection opened: never start a session nobody will end.
+      socket.destroy();
+      throw new Error('The talk session was stopped while connecting');
+    }
+    this.socket = socket;
     this.packets.clear();
 
     let ack: bigint;
     try {
       ack = await this.requestAck(PacketType.StartVoice);
     } catch (error) {
+      const stopped = this.closed;
       this.teardown();
+      if (stopped) throw new Error('The talk session was stopped while connecting', { cause: error });
       throw new Error(`The camera did not answer the request to start talking: ${(error as Error).message}`, { cause: error });
     }
+    if (this.closed) throw new Error('The talk session was stopped while connecting');
     if (ack !== 0n) {
       this.teardown();
       throw new Error(`The camera refused to start talking (ack ${ack}). Another app may be talking to it.`);
@@ -99,7 +108,7 @@ export class AqaraTalkClient extends EventEmitter<{ close: [] }> {
     if (!this.open || !this.udp) return;
     const header = buildRtpHeader(RTP_PAYLOAD_TYPE, this.sequence * AAC_FRAME_SAMPLES, this.ssrc, this.sequence);
     this.sequence++;
-    this.udp.send(Buffer.concat([header, frame]), this.audioPort, this.host);
+    this.udp.send([header, frame], this.audioPort, this.host);
   }
 
   /** End the voice session politely and release both sockets. */

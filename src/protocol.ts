@@ -181,8 +181,9 @@ export class AdtsFramer {
   private buffer = Buffer.alloc(0);
 
   public push(data: Buffer): Buffer[] {
+    // Always a fresh copy: frames handed out earlier stay views of the old bytes.
     this.buffer = this.buffer.length === 0 ? Buffer.from(data) : Buffer.concat([this.buffer, data]);
-    const { frames, consumed } = extractAdtsFrames(this.buffer);
+    const { frames, consumed } = extractAdtsFrames(this.buffer, false);
     this.buffer = this.buffer.subarray(consumed);
     return frames;
   }
@@ -192,7 +193,11 @@ export class AdtsFramer {
   }
 }
 
-export function extractAdtsFrames(data: Buffer): { frames: Buffer[]; consumed: number } {
+/**
+ * Finds the complete ADTS frames in `data`. With `copy` off the frames are
+ * views into `data`, so the caller must not change those bytes afterwards.
+ */
+export function extractAdtsFrames(data: Buffer, copy = true): { frames: Buffer[]; consumed: number } {
   const frames: Buffer[] = [];
   let offset = 0;
   while (offset <= data.length - 7) {
@@ -206,7 +211,8 @@ export function extractAdtsFrames(data: Buffer): { frames: Buffer[]; consumed: n
       continue;
     }
     if (offset + frameLength > data.length) break;
-    frames.push(Buffer.from(data.subarray(offset, offset + frameLength)));
+    const frame = data.subarray(offset, offset + frameLength);
+    frames.push(copy ? Buffer.from(frame) : frame);
     offset += frameLength;
   }
   return { frames, consumed: offset };

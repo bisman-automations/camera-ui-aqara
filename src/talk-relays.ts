@@ -1,6 +1,6 @@
 import { TalkRelay } from './relay.js';
 import { aqaraRtspUrl, describe } from './rtsp.js';
-import { cameraChoices, parseRelays, relayFromForm, relayUrl, serializeRelays } from './talk-relay-config.js';
+import { cameraChoices, choicesKey, parseRelays, relayFromForm, relayUrl, serializeRelays } from './talk-relay-config.js';
 
 import type { DeviceStorage, FormSubmitResponse, JsonSchema, LoggerService } from '@camera.ui/sdk';
 import type { RelayCameraChoice, RelayFormValues, TalkRelayConfig } from './talk-relay-config.js';
@@ -20,6 +20,10 @@ export class TalkRelayManager {
   private cameras: RelayCameraChoice[] = [];
   private readonly running = new Map<string, TalkRelay>();
   private readonly relayLogger: Logger;
+  /** The Camera list as last shown, so an unchanged list is not sent again. */
+  private shownChoices?: string;
+  /** Set by stop(): relays must not start again until start(). */
+  private stopped = false;
 
   constructor(
     private readonly storage: DeviceStorage<AqaraPluginStorage>,
@@ -47,11 +51,14 @@ export class TalkRelayManager {
   /** Offer these discovered cameras in the relay form's Camera list. */
   public async setCameras(cameras: RelayCameraChoice[]): Promise<void> {
     this.cameras = cameras;
-    await this.quietly(() => this.storage.changeSchema('relayCamera', this.cameraField()), 'update the camera list');
+    const key = choicesKey(cameraChoices(this.cameras, this.configs));
+    if (key === this.shownChoices) return;
+    if (await this.quietly(() => this.storage.changeSchema('relayCamera', this.cameraField()), 'update the camera list')) this.shownChoices = key;
   }
 
   /** A camera found at a new address: move the relays made for it there. */
   public async followCamera(deviceId: string, host: string): Promise<void> {
+    if (this.stopped) return;
     for (const relay of this.configs) {
       if (relay.deviceId !== deviceId || relay.host === host) continue;
       this.logger.log(`Talk relay "${relay.name}": camera moved from ${relay.host} to ${host}`);
@@ -94,6 +101,7 @@ export class TalkRelayManager {
 
   /** The fixed part of the plugin settings: the add-relay form. */
   public schema(): JsonSchema[] {
+    this.shownChoices = choicesKey(cameraChoices(this.cameras, this.configs));
     return [
       {
         type: 'string',
@@ -168,6 +176,7 @@ export class TalkRelayManager {
 
   /** Load the saved relays, show them in the settings and start them. */
   public async start(): Promise<void> {
+    this.stopped = false;
     this.configs = parseRelays(await this.storage.getValue<string>(STORAGE_KEY));
     for (const relay of this.configs) {
       await this.showRelay(relay);
@@ -176,6 +185,7 @@ export class TalkRelayManager {
   }
 
   public async stop(): Promise<void> {
+    this.stopped = true;
     const relays = [...this.running.values()];
     this.running.clear();
     await Promise.allSettled(relays.map((relay) => relay.stop()));
@@ -229,6 +239,7 @@ export class TalkRelayManager {
   }
 
   private async run(relay: TalkRelayConfig): Promise<boolean> {
+    if (this.stopped) return false;
     try {
       const running = await TalkRelay.start({
         source: aqaraRtspUrl(relay.host, relay.username, relay.password, relay.path),
@@ -238,6 +249,11 @@ export class TalkRelayManager {
         maxCallMs: this.maxCallMs,
         logger: this.relayLogger,
       });
+      if (this.stopped) {
+        // stop() ran while this relay started.
+        await running.stop();
+        return false;
+      }
       this.running.set(relay.id, running);
       this.logger.log(`Talk relay "${relay.name}" ready at ${relayUrl(relay)}`);
       return true;
@@ -264,11 +280,13 @@ export class TalkRelayManager {
    * try rather than chained with `.catch`: the camera.ui host can return plain
    * values where the SDK types promise a Promise.
    */
-  private async quietly(call: () => unknown, what: string): Promise<void> {
+  private async quietly(call: () => unknown, what: string): Promise<boolean> {
     try {
       await call();
+      return true;
     } catch (error) {
       this.logger.debug(`Could not ${what}:`, error);
+      return false;
     }
   }
 

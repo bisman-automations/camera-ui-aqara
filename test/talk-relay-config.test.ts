@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   cameraChoices,
+  choicesKey,
   FIRST_RELAY_PORT,
   MANUAL_CAMERA,
   nextFreePort,
@@ -72,6 +73,16 @@ describe('talk relay settings', () => {
     assert.equal(labels['aqara-lumi3.0004'], 'Aqara Doorbell G400 (192.0.2.40, G400 Video Doorbell)');
     assert.match(labels['aqara-192.0.2.21'], /has a talk relay$/);
     assert.match(labels[MANUAL_CAMERA], /enter its IP address/);
+  });
+
+  it('gives the same key only to Camera lists that look the same', () => {
+    const other: RelayCameraChoice = { id: 'aqara-192.0.2.21', name: 'Aqara (192.0.2.21)', host: '192.0.2.21' };
+    const key = choicesKey(cameraChoices([g400, other], []));
+    assert.equal(choicesKey(cameraChoices([{ ...g400 }, { ...other }], [])), key);
+    assert.notEqual(choicesKey(cameraChoices([other, g400], [])), key, 'order matters');
+    assert.notEqual(choicesKey(cameraChoices([g400, other], [frontDoor])), key, 'a new relay changes a label');
+    assert.notEqual(choicesKey(cameraChoices([g400, { ...other, host: '192.0.2.22' }], [])), key);
+    assert.notEqual(choicesKey(cameraChoices([g400], [])), key);
   });
 
   it('takes name, address and device id from a picked camera', () => {

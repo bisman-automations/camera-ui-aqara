@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildCameraConfig, missingSources, pickStreams, rolesFor, sourceForMissing, streamIndexForRole } from '../src/streams.js';
+import { buildCameraConfig, missingSources, pickStreams, rolesFor, sameStreams, sourceForMissing, streamIndexForRole } from '../src/streams.js';
 
 describe('streams', () => {
   it('hands roles out best first', () => {
@@ -44,5 +44,14 @@ describe('streams', () => {
     const [missing] = missingSources(['high-resolution', 'low-resolution'], 3);
     assert.deepEqual(sourceForMissing(missing), { name: 'medium', role: 'mid-resolution', useForSnapshot: false, hotMode: false, preload: false });
     assert.equal('urls' in sourceForMissing(missing), false);
+  });
+
+  it('compares saved stream lists', () => {
+    const a = ['rtsp://192.0.2.10/ch1', 'rtsp://192.0.2.10/ch2'];
+    assert.equal(sameStreams(a, [...a]), true);
+    assert.equal(sameStreams(undefined, []), true);
+    assert.equal(sameStreams(undefined, a), false);
+    assert.equal(sameStreams(a, [a[1], a[0]]), false);
+    assert.equal(sameStreams(a, a.slice(0, 1)), false);
   });
 });

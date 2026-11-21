@@ -151,6 +151,18 @@ describe('ADTS framing', () => {
     assert.deepEqual(framer.push(a.subarray(25)), [a]);
   });
 
+  it('leaves frames it returned unchanged by the next chunk', () => {
+    const framer = new AdtsFramer();
+    const a = adtsFrame(20, 5);
+    const b = adtsFrame(24, 6);
+    const chunk = Buffer.concat([a, b.subarray(0, 10)]);
+    const [first] = framer.push(chunk);
+    chunk.fill(0);
+    framer.push(b.subarray(10));
+    framer.push(adtsFrame(30, 7));
+    assert.deepEqual(first, a);
+  });
+
   it('steps over a header with an impossible length', () => {
     const bad = Buffer.from([0xff, 0xf1, 0x60, 0x40, 0x00, 0x1f, 0xfc]);
     const good = adtsFrame(12, 4);

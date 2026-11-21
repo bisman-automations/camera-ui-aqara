@@ -249,8 +249,17 @@ export default class AqaraPlugin extends BasePlugin<AqaraPluginStorage> implemen
   }
 
   private async startCamera(camera: CameraDevice, initial?: AqaraInitialSettings): Promise<void> {
+    const previous = this.cameras.get(camera.id);
     const controller = new AqaraCamera(camera, () => this.maxCallMs());
     this.cameras.set(camera.id, controller);
+    if (previous) {
+      // camera.ui added this camera again: stop the old controller so its streams and relay are released.
+      try {
+        await previous.destroy();
+      } catch (error) {
+        camera.logger.debug('Could not stop the previous controller:', error);
+      }
+    }
     try {
       await controller.initialize(initial);
     } catch (error) {

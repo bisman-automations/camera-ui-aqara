@@ -122,6 +122,23 @@ describe('AqaraTalkClient', () => {
     assert.equal(client.connected, false);
   });
 
+  it('never starts a session when disconnect() runs while it connects', async () => {
+    const camera = await fakeCamera(() => 0);
+    cleanups.push(() => camera.server.close());
+    const client = new AqaraTalkClient({ host: '127.0.0.1', controlPort: camera.port, heartbeatIntervalMs: 20 });
+    const connecting = client.connect();
+    await client.disconnect();
+    await assert.rejects(connecting, /stopped while connecting/);
+    assert.equal(client.connected, false);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(client.connected, false);
+    assert.deepEqual(
+      camera.received.filter((packet) => packet.type === PacketType.StartVoice || packet.type === PacketType.Heartbeat),
+      [],
+      'no voice session and no heartbeats',
+    );
+  });
+
   it('ends the session when the camera hangs up', async () => {
     const camera = await fakeCamera(() => 0);
     cleanups.push(() => camera.server.close());
