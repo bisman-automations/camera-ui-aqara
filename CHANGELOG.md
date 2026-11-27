@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.4] - 2026-11-27
+
+### Changed
+
+- **Updated libraries.** The RTSP library is updated to 2.1.12 (no change to how it works for this plugin).
+
+### Fixed
+
+- Version 3.4.3 was tagged without its version number in the package, so it never reached npm. This release ships the same change under a version npm accepts.
+
 ## [3.4.2] - 2026-11-21
 
 ### Fixed
@@ -108,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two-way audio through Aqara's LAN talk protocol, offered to camera.ui as an RTSP talkback channel.
 - Cameras follow their new address when their IP changes.
 
+[3.4.4]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.4.3...v3.4.4
 [3.4.2]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.4.1...v3.4.2
 [3.4.1]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/bisman-automations/camera-ui-aqara/compare/v3.3.4...v3.4.0
